@@ -1,0 +1,19 @@
+# Data files
+artifacts_data.json
+artefakte_export.csv
+
+# Generated output
+katalog_output.pdf
+
+# Image data
+bilder/
+
+# LaTeX temp / compilation artifacts
+latex_temp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

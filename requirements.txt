@@ -1,0 +1,13 @@
+# Python-Abhängigkeiten für den Katalog-Generator
+# Installation: pip install -r requirements.txt
+
+# CSV-Datenverarbeitung
+pandas>=2.0
+
+# Kartenerstellung (Standortkarten)
+matplotlib>=3.7
+cartopy>=0.21
+folium>=0.17
+
+# PDF-Validierung (optional, für Ausgabe-Checks)
+# PyMuPDF>=1.23
