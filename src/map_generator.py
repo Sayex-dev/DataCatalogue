@@ -65,26 +65,30 @@ def create_map(artifact, output_dir, bilder_dir=None):
     ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor='#8a8078')
     ax.add_feature(cfeature.BORDERS, linewidth=0.4, edgecolor='#a09080', linestyle='--')
     ax.add_feature(cfeature.RIVERS, linewidth=0.2, edgecolor='#b0c8e0')
-    ax.add_feature(cfeature.LAKES, facecolor='#d4e4f0', edgecolor='#a0b8d0', linewidth=0.3)
-    
+    # Lakes: try high-resolution first, fall back to default
+    try:
+        ax.add_feature(cfeature.LAKES.with_scale('10m'), facecolor='#d4e4f0', edgecolor='#a0b8d0', linewidth=0.3)
+    except Exception:
+        ax.add_feature(cfeature.LAKES, facecolor='#d4e4f0', edgecolor='#a0b8d0', linewidth=0.3)
+
     # Gridlines
     gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.4, linestyle='--')
     gl.top_labels = False
     gl.right_labels = False
     gl.xlabel_style = {'size': 7, 'color': '#666666'}
     gl.ylabel_style = {'size': 7, 'color': '#666666'}
-    
+
     # Plot locations
     fundort_color = '#d4451a'  # Warm red-orange
     collection_color = '#1a5ba0'  # Deep blue
     fundort_marker = 's'
     collection_marker = 'o'
-    
+
     fundort_lons = []
     fundort_lats = []
     collection_lons = []
     collection_lats = []
-    
+
     for i, loc in enumerate(geo_locations):
         lon, lat = loc['geometry']
         if loc.get('is_fundort'):
@@ -164,15 +168,27 @@ def create_map(artifact, output_dir, bilder_dir=None):
                markersize=8, label='Fundort', markeredgecolor='white', markeredgewidth=0.5),
         Line2D([0], [0], marker=collection_marker, color='w', markerfacecolor=collection_color,
                markersize=8, label='Sammlungsstandort', markeredgecolor='white', markeredgewidth=0.5),
-        Line2D([0], [0], color='#666666', linestyle='-', linewidth=1.5, label='Datierung bekannt'),
-        Line2D([0], [0], color='#666666', linestyle='--', linewidth=1.0, label='Datierung unbekannt'),
+        Line2D([0], [0], color='#666666', linestyle='-', linewidth=1.5, label='Verlauf gesichert'),
+        Line2D([0], [0], color='#666666', linestyle='--', linewidth=1.0, label='Verlauf ungesichert'),
     ]
     ax.legend(handles=legend_elements, loc='lower left', fontsize=7,
               framealpha=0.9, edgecolor='#cccccc')
     
     # Title
-    ax.set_title(f"Standortverlauf: {artifact['name']} (Kat.-Nr. {artifact['katalognummer']})",
+    fo_name = artifact.get('fundort', {}).get('name', '') or artifact.get('fundort', {}).get('location_reference', '')
+    title_parts = [f"Standortverlauf: {artifact['name']}"]
+    if fo_name:
+        title_parts.append(f"Fundort: {fo_name}")
+    ax.set_title(' -- '.join(title_parts),
                  fontsize=10, pad=10, color='#333333')
+    
+    # Add fundort name as text annotation on the map itself
+    if fo_name:
+        ax.text(0.02, 0.97, f'Fundort: {fo_name}',
+                transform=ax.transAxes, fontsize=8, fontweight='bold',
+                verticalalignment='top',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.85,
+                          edgecolor='#d4451a', linewidth=1.0))
     
     plt.tight_layout()
     

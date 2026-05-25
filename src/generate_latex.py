@@ -107,18 +107,13 @@ def find_image_file(img_name, bilder_dir):
 
 
 def format_location_table(artifact):
-    """Generate longtable of chronological location history."""
+    """Generate longtable of chronological location history (without Typ column)."""
     locations = artifact.get('all_locations', [])
     if not locations:
         return ''
 
     rows = []
     for loc in locations:
-        if loc.get('is_fundort'):
-            typ = r'{[Fundort]}'
-        else:
-            typ = r'{[in collection]}'
-
         label = escape_meta(loc.get('label', ''))
         ds = escape_meta(loc.get('date_start', ''))
         de = escape_meta(loc.get('date_end', ''))
@@ -134,7 +129,7 @@ def format_location_table(artifact):
 
         sammler = escape_meta(loc.get('sammler', ''))
 
-        row = f'{typ} & {label} & {date_str}'
+        row = f'{label} & {date_str}'
         if sammler and not loc.get('is_fundort'):
             row += f' & {sammler}'
         else:
@@ -150,13 +145,13 @@ def format_location_table(artifact):
         r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{p{2.5cm} p{3.5cm} p{4.5cm} p{3cm}}',
+        r'\begin{longtable}{p{4.5cm} p{5cm} p{4cm}}',
         r'\toprule',
-        r'\textbf{Typ} & \textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
+        r'\textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
         r'\midrule',
         r'\endfirsthead',
         r'\toprule',
-        r'\textbf{Typ} & \textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
+        r'\textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
         r'\midrule',
         r'\endhead',
     ]
@@ -170,7 +165,7 @@ def format_location_table(artifact):
 
 
 def generate_artifact_entry(artifact, bilder_dir, map_dir):
-    """Generate LaTeX for one artifact."""
+    """Generate LaTeX for one artifact with minipage layout."""
     lines = []
     kn = artifact['katalognummer']
     name = escape_meta(artifact['name'])
@@ -208,32 +203,22 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
         else:
             missing_imgs.append(img)
 
-    # Build entry
+    # Build entry - each artifact starts on a new page
+    lines.append('')
+    lines.append(r'\newpage')
+    lines.append(r'\FloatBarrier')
     lines.append('')
     lines.append('%' + '-' * 60)
     lines.append(f'% Katalog-Nr. {kn}: {artifact["name"][:60]}')
     lines.append('%' + '-' * 60)
     lines.append('')
 
-    lines.append(f'\\artifacttitle{{{name}}}')
+    # Catalog number (small, above title)
     lines.append(f'\\catnum{{{kn}}}')
+    # Title (full width) — stays on same page with content below
+    lines.append(f'\\artifacttitle{{{name}}}')
     lines.append('')
-
-    lines.append('\\metablock{')
-    lines.append(r' \\ '.join(meta_lines))
-    lines.append('}')
-
-    # Wrapfigure for images
-    if img_paths:
-        lines.append('')
-        lines.append(r'\begin{wrapfigure}{r}{0.48\textwidth}')
-        lines.append(r'  \vspace{-14pt}')
-        for i, ip in enumerate(img_paths):
-            lines.append(f'  \\includegraphics[width=\\linewidth,keepaspectratio]{{{ip}}}')
-            if i < len(img_paths) - 1:
-                lines.append(r'  \vspace{6pt}')
-        lines.append(r'\end{wrapfigure}')
-        lines.append('')
+    lines.append(r'\vspace{4pt}')
 
     # Missing image notices
     for img in missing_imgs:
@@ -248,45 +233,80 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
         lines.append(r'\end{center}')
         lines.append('')
 
+    # --- Two-column layout using paracol (breaks across pages) ---
+    # Left column: text content (can span multiple pages)
+    # Right column: images (at top, then whitespace)
+
+    # Build left column content
+    left_content = []
+    left_content.append(r'\metablock{')
+    left_content.append(r' \\ '.join(meta_lines))
+    left_content.append('}')
+
     # Beschreibung Extern (quoted box)
     if artifact.get('beschreibung_extern'):
-        lines.append('')
-        lines.append(r'\begin{quotebox}')
+        left_content.append('')
+        left_content.append(r'\begin{quotebox}')
         formatted = format_body_text(artifact['beschreibung_extern'])
-        lines.append(latex_escape(formatted))
+        left_content.append(latex_escape(formatted))
         if artifact.get('annotationen'):
-            lines.append('')
-            lines.append(r'\medskip')
-            lines.append(r'{\footnotesize\bfseries Annotationen:} ' + escape_meta(artifact['annotationen']))
-        lines.append(r'\end{quotebox}')
-        lines.append('')
+            left_content.append('')
+            left_content.append(r'\medskip')
+            left_content.append(r'{\footnotesize\bfseries Annotationen:} ' + escape_meta(artifact['annotationen']))
+        left_content.append(r'\end{quotebox}')
+        left_content.append('')
 
     # Beschreibung MIE
     if artifact.get('beschreibung_mie'):
         formatted = format_body_text(artifact['beschreibung_mie'])
-        lines.append(latex_escape(formatted))
-        lines.append('')
+        left_content.append(latex_escape(formatted))
+        left_content.append('')
 
     # Referenzen
     if artifact.get('referenz_literatur'):
-        lines.append(f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}')
-        lines.append('')
+        left_content.append(f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}')
     if artifact.get('vergleiche'):
-        lines.append(f'\\referencetext{{Vergleiche: {escape_meta(artifact["vergleiche"])}}}')
-        lines.append('')
+        left_content.append(f'\\referencetext{{Vergleiche: {escape_meta(artifact["vergleiche"])}}}')
     if artifact.get('auktionen'):
-        lines.append(f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}')
-        lines.append('')
+        left_content.append(f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}')
 
-    # Standortkarte
+    left_str = '\n'.join(left_content)
+
+    # Build right column (images)
+    right_content = []
+    right_content.append(r'\vspace{0pt}')
+    if img_paths:
+        for i, ip in enumerate(img_paths):
+            right_content.append(f'\\includegraphics[width=\\linewidth,keepaspectratio]{{../bilder/{os.path.basename(ip)}}}')
+            if i < len(img_paths) - 1:
+                right_content.append(r'\vspace{8pt}')
+    else:
+        right_content.append(r'\vspace{0pt}')  # empty placeholder
+
+    right_str = '\n'.join(right_content)
+
+    # Assemble with paracol (column ratio ~55:45)
+    lines.append(r'\columnratio{0.55}')
+    lines.append(r'\begin{paracol}{2}')
+    lines.append(left_str)
+    lines.append('')
+    lines.append(r'\switchcolumn')
+    lines.append(right_str)
+    lines.append(r'\end{paracol}')
+    lines.append('')
+
+    # --- Standortkarte (always on new page, with title) ---
     map_path = os.path.join(map_dir, f'map_{oid}.png')
     if os.path.isfile(map_path):
         lines.append('')
-        lines.append(r'\vspace{8pt}')
+        lines.append(r'\newpage')
+        lines.append(r'\FloatBarrier')
+        lines.append('')
         lines.append(r'{\fontsize{11pt}{14pt}\selectfont\bfseries Standortkarte}')
+        lines.append(r'\vspace{6pt}')
         lines.append('')
         lines.append(r'\begin{center}')
-        lines.append(f'  \\includegraphics[width=0.92\\textwidth,keepaspectratio]{{{map_path}}}')
+        lines.append(f'  \\includegraphics[width=0.92\\textwidth,keepaspectratio]{{./maps/{os.path.basename(map_path)}}}')
         lines.append(r'\end{center}')
         lines.append('')
         tbl = format_location_table(artifact)
@@ -353,7 +373,7 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
     doc.append(r'\vspace*{4cm}')
-    doc.append(r'{\fontsize{28pt}{34pt}\selectfont\bfseries Katalog der Artefakte}')
+    doc.append(r'{\fontsize{28pt}{34pt}\selectfont\bfseries Gattung}')
     doc.append(r'\vspace{1cm}')
     doc.append(r'{\fontsize{14pt}{18pt}\selectfont Arch\"aologische Sammlung}')
     doc.append(r'\vspace{0.5cm}')

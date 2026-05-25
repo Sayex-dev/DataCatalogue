@@ -1,0 +1,213 @@
+% ============================================================  
+% LaTeX Styling for Artefakt-Katalog  
+% Uses LuaLaTeX with TeX Gyre Termes (Times New Roman clone)  
+% ============================================================  
+  
+% ── Document Setup ──────────────────────────────────────────  
+\documentclass[a4paper,12pt,twoside=false]{scrartcl}  
+  
+% ── Fonts ───────────────────────────────────────────────────  
+% TeX Gyre Termes = Times New Roman clone  
+\usepackage{tgtermes}  
+\usepackage[T1]{fontenc}  
+% Fallback: if tgtermes not available, use newtx  
+% \usepackage{newtxtext,newtxmath}  
+  
+% ── Language ────────────────────────────────────────────────  
+\usepackage[ngerman]{babel}  
+  
+% ── Page Geometry ───────────────────────────────────────────  
+\usepackage[  
+  a4paper,  
+  left=2.5cm,  
+  right=2.5cm,  
+  top=2.5cm,  
+  bottom=2.5cm,  
+  headheight=14pt,  
+  headsep=8pt,  
+  footskip=20pt  
+]{geometry}  
+  
+% ── Headers and Footers ─────────────────────────────────────  
+\usepackage{fancyhdr}  
+\usepackage{lastpage}  
+\pagestyle{fancy}  
+\fancyhf{}  
+\fancyfoot[R]{\thepage}  
+\fancyhead[L]{\small\textit{\leftmark}}  
+\fancyhead[R]{\small\textit{Gattung}}  
+\renewcommand{\headrulewidth}{0.4pt}  
+\renewcommand{\footrulewidth}{0pt}  
+  
+% ── Graphics ────────────────────────────────────────────────  
+\usepackage{graphicx}  
+\usepackage{wrapfig}  
+\usepackage{float}  
+\usepackage[export]{adjustbox}  
+\usepackage{placeins}  % ADDED: Prevents floats from drifting  
+  
+% Better wrapfig settings to prevent overlap
+\setlength{\intextsep}{12pt}        % Space above and below wrapfig
+\setlength{\columnsep}{15pt}        % Space between wrapfig and text
+\setlength{\wrapoverhang}{0pt}      % No overhang into margin
+  
+% ── Colors ──────────────────────────────────────────────────  
+\usepackage{xcolor}  
+\definecolor{metagray}{HTML}{777777}  
+\definecolor{quotebg}{HTML}{F5F5F0}  
+\definecolor{quoteborder}{HTML}{CCCCBB}  
+\definecolor{sectionline}{HTML}{444444}  
+  
+% ── Tables ──────────────────────────────────────────────────  
+\usepackage{tabularx}  
+\usepackage{booktabs}  
+\usepackage{longtable}  
+\usepackage{array}  
+\usepackage{colortbl}  
+  
+% ── Quote Boxes ─────────────────────────────────────────────  
+\usepackage{tcolorbox}  
+\tcbuselibrary{breakable,skins}  
+\newtcolorbox{quotebox}{  
+  colback=quotebg,  
+  colframe=quoteborder,  
+  boxrule=0.5pt,  
+  arc=3pt,  
+  left=10pt,  
+  right=10pt,  
+  top=8pt,  
+  bottom=8pt,  
+  before skip=12pt,            % INCREASED from 10pt
+  after skip=12pt,             % INCREASED from 10pt
+  fontupper=\itshape\small,  
+  breakable,  
+}  
+  
+% ── Table of Contents ───────────────────────────────────────  
+\usepackage{tocloft}  
+\setlength{\cftbeforesecskip}{6pt}  
+\setlength{\cftbeforesubsecskip}{3pt}  
+\renewcommand{\cftsecfont}{\normalfont\bfseries}  
+\renewcommand{\cftsubsecfont}{\normalfont}  
+\renewcommand{\cftsecpagefont}{\normalfont}  
+\renewcommand{\cftsubsecpagefont}{\normalfont}  
+\renewcommand{\contentsname}{Inhaltsverzeichnis}  
+  
+% ── Captions ────────────────────────────────────────────────  
+\usepackage{caption}  
+\captionsetup{font=small,labelfont=bf,textfont=it,labelsep=period}  
+  
+% ── Hyperlinks ──────────────────────────────────────────────  
+\usepackage[hidelinks]{hyperref}  
+\usepackage{bookmark}  
+  
+% ── Multi-column ────────────────────────────────────────────
+\usepackage{multicol}
+\usepackage{paracol}  % parallel columns that break across pages
+  
+% ── Enumerate / Itemize ─────────────────────────────────────  
+\usepackage{enumitem}  
+  
+% ── Microtype ───────────────────────────────────────────────  
+\usepackage{microtype}  
+  
+% ── Spacing ─────────────────────────────────────────────────  
+\usepackage{setspace}  
+\setstretch{1.15}  
+  
+% Use KOMA-Script's built-in parskip instead of the package  
+\KOMAoptions{parskip=half}  
+\setlength{\parindent}{0pt}
+
+% ============================================================  
+% Custom Commands  
+% ============================================================  
+  
+% Catalog entry title  
+\newcommand{\artifacttitle}[1]{%  
+  \FloatBarrier%                                    % ADDED: Clear all floats first
+  \vspace{16pt}%  
+  {\fontsize{24pt}{28pt}\selectfont\bfseries #1\par}%  
+  \vspace{4pt}%  
+}  
+  
+% Metadata line (gray, 10pt)  
+\newcommand{\metaline}[1]{%  
+  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1\par}%  
+}  
+  
+% Metadata block  
+\newcommand{\metablock}[1]{%  
+  \vspace{2pt}%  
+  \begin{spacing}{1.15}%  
+  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1}%  
+  \end{spacing}%  
+  \vspace{10pt}%                                    % INCREASED from 8pt
+}  
+  
+% Catalog number marker (small, above title, number only)
+\newcommand{\catnum}[1]{%
+  {\fontsize{9pt}{12pt}\selectfont\color{metagray}#1\par}%
+  \vspace{2pt}%
+}  
+  
+% Separator line  
+\newcommand{\artifactsep}{%  
+  \FloatBarrier%                                    % ADDED: Clear floats before separator
+  \vspace{14pt}%                                    % INCREASED from 10pt
+  \noindent\rule{\textwidth}{0.3pt}%  
+  \vspace{14pt}%                                    % INCREASED from 10pt
+}  
+  
+% Reference text (gray, 10pt)  
+\newcommand{\referencetext}[1]{%  
+  \vspace{10pt}%                                    % INCREASED from 8pt
+  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1\par}%  
+  \vspace{6pt}%                                     % ADDED: Space after reference
+}  
+
+% NEW: Enhanced image commands to prevent overlap
+% Use this for wrapped figures
+\newcommand{\artifactimage}[3][r]{%
+  % #1 = placement (r or l), #2 = width, #3 = filename
+  \begin{wrapfigure}{#1}{#2}%
+    \centering%
+    \vspace{-8pt}%  % Adjust vertical position
+    \includegraphics[width=\linewidth,keepaspectratio,max height=0.4\textheight]{#3}%
+    \vspace{-8pt}%  % Adjust bottom space
+  \end{wrapfigure}%
+}
+
+% Use this for standalone figures (not wrapped)
+\newcommand{\artifactfigure}[3][0.5]{%
+  % #1 = width ratio (default 0.5), #2 = filename, #3 = caption
+  \begin{figure}[H]%
+    \centering%
+    \includegraphics[width=#1\textwidth,keepaspectratio,max height=0.5\textheight]{#2}%
+    \caption{#3}%
+  \end{figure}%
+  \vspace{6pt}%
+}
+
+% NEW: Clear page if less than specified space remains
+\newcommand{\needspace}[1]{%
+  \par\penalty-100\vskip 0pt plus 1fil\penalty 100\vskip 0pt plus -1fil%
+  \ifdim\pagetotal>\dimexpr\pagegoal-#1\relax%
+    \clearpage%
+  \fi%
+}
+
+% NEW: Start a new artifact entry (use at beginning of each artifact)
+% (unused in current template - commented out to avoid definition conflicts)
+% \newcommand{\startartifact}{%
+%   \FloatBarrier%
+%   \needspace{8cm}%  % Ensure at least 8cm space available
+% }
+%
+% NEW: End an artifact entry (use at end of each artifact)
+% (unused in current template - commented out to avoid definition conflicts)
+% \providecommand{\endartifact}{%
+%   \par%
+%   \vspace{6pt}%
+%   \FloatBarrier%  % Ensure all images are placed before next artifact
+% }

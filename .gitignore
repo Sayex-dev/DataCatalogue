@@ -9,7 +9,8 @@ katalog_output.pdf
 bilder/
 
 # LaTeX temp / compilation artifacts
-latex_temp/
+latex_temp/*
+!latex_temp/catalog_styling.tex
 
 # Python
 __pycache__/
