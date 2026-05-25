@@ -1,0 +1,28 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Generated artifacts (stay on host, not in image)
+katalog_output.pdf
+artifacts_data.json
+
+# LaTeX compilation temp files
+latex_temp/*.aux
+latex_temp/*.log
+latex_temp/*.out
+latex_temp/*.toc
+latex_temp/*.pdf
+latex_temp/maps/*
+latex_temp/catalog.tex
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

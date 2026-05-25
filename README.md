@@ -3,7 +3,21 @@
 Erstellt aus einer CSV-Datei mit Artefaktdaten einen strukturierten, druckfertigen
 Sammlungskatalog als PDF.
 
-## Voraussetzungen
+## Schnellstart mit Docker (empfohlen)
+
+Keine manuelle Installation von LaTeX oder Python-Abhängigkeiten nötig:
+
+```bash
+docker compose up
+```
+
+Beim ersten Start wird das Image gebaut (einmalig, ~1.5 GB) und Cartopy
+Natural-Earth-Daten werden heruntergeladen (~150 MB, persistiert im Volume).
+Danach liegt das PDF unter `katalog_output.pdf`.
+
+Falls Docker nicht installiert ist, folge der manuellen Installation unten.
+
+## Voraussetzungen (manuelle Installation)
 
 - **Python 3.10+**
 - **LaTeX** (TeX Live, mindestens `texlive-latex-recommended`,

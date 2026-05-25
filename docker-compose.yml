@@ -1,0 +1,15 @@
+services:
+  catalog:
+    build: .
+    volumes:
+      # Mount the project so the container sees CSV, bilder/, src/, etc.
+      - .:/app
+      # Persist cartopy Natural Earth data (downloaded on first run, ~150 MB)
+      - cartopy_cache:/root/.local/share/cartopy
+      # Persist pdflatex font cache (generated on first compile)
+      - texmf_cache:/root/.texlive2021
+    working_dir: /app
+
+volumes:
+  cartopy_cache:
+  texmf_cache:
