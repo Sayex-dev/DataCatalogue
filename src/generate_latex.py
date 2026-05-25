@@ -327,9 +327,11 @@ def generate_toc_section(data):
 
     lines = []
     lines.append('')
+    lines.append(r'\begingroup')
+    lines.append(r'\setlength{\parindent}{0pt}')
     lines.append(r'\begin{center}')
     lines.append(r'{\fontsize{22pt}{28pt}\selectfont\bfseries Inhaltsverzeichnis}')
-    lines.append(r'\vspace{4pt}')
+    lines.append(r'\par\vspace{4pt}')
     lines.append(r'\rule{0.6\textwidth}{0.6pt}')
     lines.append(r'\end{center}')
     lines.append(r'\vspace{20pt}')
@@ -337,13 +339,19 @@ def generate_toc_section(data):
     for gattung, objektypen in toc.items():
         lines.append('')
         lines.append(r'\vspace{8pt}')
-        lines.append(f'{{\\fontsize{{16pt}}{{20pt}}\\selectfont\\bfseries {escape_meta(gattung)}}}')
+        lines.append(
+            f'{{\\fontsize{{16pt}}{{20pt}}\\selectfont\\bfseries '
+            f'{escape_meta(gattung)}\\par}}'
+        )
         lines.append(r'\vspace{4pt}')
         lines.append(r'\noindent\rule{\textwidth}{0.3pt}')
-        lines.append(r'\vspace{10pt}')
+        lines.append(r'\par\vspace{10pt}')
 
         for objekttyp, artifacts in objektypen.items():
-            lines.append(f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\textit{{{escape_meta(objekttyp)}}}}}')
+            lines.append(
+                f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\itshape '
+                f'{escape_meta(objekttyp)}\\par}}'
+            )
             lines.append(r'\vspace{8pt}')
 
             for a in artifacts:
@@ -351,12 +359,15 @@ def generate_toc_section(data):
                 nm = escape_meta(a['name'])
                 lbl = f"art:{kn.replace('.', '-')}"
 
-                # Clean one-row layout: indent, number, name, dots, page
+                # Clean one-row layout: indent, number, name, dots, page.
+                # Wrap in \par at the end so each entry forms its own line.
                 entry = (
-                    f'\\noindent\\hspace*{{1.5em}}'
-                    f'{{\\fontsize{{11pt}}{{14pt}}\\selectfont'
-                    f' {kn}\\quad {nm}'
-                    f' \\dotfill\\ \\pageref{{{lbl}}}}}'
+                    r'\noindent{\fontsize{11pt}{14pt}\selectfont'
+                    r'\hspace*{1.5em}'
+                    f'{kn}\\quad {nm}'
+                    r'\dotfill\ '
+                    f'\\pageref{{{lbl}}}'
+                    r'\par}'
                 )
                 lines.append(entry)
                 lines.append(r'\vspace{4pt}')
@@ -364,6 +375,7 @@ def generate_toc_section(data):
             lines.append(r'\vspace{2pt}')
 
     lines.append(r'\vspace{16pt}')
+    lines.append(r'\endgroup')
     lines.append(r'\newpage')
     return '\n'.join(lines)
 
