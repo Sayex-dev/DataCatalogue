@@ -73,7 +73,7 @@ def run_pdflatex(tex_file, workdir, passes=2):
             pdflatex,
             '-interaction=nonstopmode',
             '-halt-on-error',
-            '-output-directory', workdir,
+            '-output-directory', '.',
             tex_file,
         ]
 
@@ -81,6 +81,7 @@ def run_pdflatex(tex_file, workdir, passes=2):
             cmd,
             capture_output=True,
             text=True,
+            encoding='latin-1',
             cwd=workdir,
             timeout=300,
         )

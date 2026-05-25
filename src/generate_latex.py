@@ -320,7 +320,7 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
 
 
 def generate_toc_section(data):
-    """Generate TOC by Gattung / Objekttyp."""
+    """Generate TOC by Gattung / Objekttyp — clean layout with one artifact per row."""
     toc = data.get('toc', {})
     if not toc:
         return ''
@@ -328,29 +328,42 @@ def generate_toc_section(data):
     lines = []
     lines.append('')
     lines.append(r'\begin{center}')
-    lines.append(r'{\fontsize{18pt}{22pt}\selectfont\bfseries Inhaltsverzeichnis}')
+    lines.append(r'{\fontsize{22pt}{28pt}\selectfont\bfseries Inhaltsverzeichnis}')
+    lines.append(r'\vspace{4pt}')
+    lines.append(r'\rule{0.6\textwidth}{0.6pt}')
     lines.append(r'\end{center}')
-    lines.append(r'\vspace{16pt}')
+    lines.append(r'\vspace{20pt}')
 
     for gattung, objektypen in toc.items():
         lines.append('')
-        lines.append(f'{{\\fontsize{{14pt}}{{18pt}}\\selectfont\\bfseries {escape_meta(gattung)}}}')
-        lines.append(r'\vspace{6pt}')
+        lines.append(r'\vspace{8pt}')
+        lines.append(f'{{\\fontsize{{16pt}}{{20pt}}\\selectfont\\bfseries {escape_meta(gattung)}}}')
+        lines.append(r'\vspace{4pt}')
+        lines.append(r'\noindent\rule{\textwidth}{0.3pt}')
+        lines.append(r'\vspace{10pt}')
+
         for objekttyp, artifacts in objektypen.items():
-            lines.append(f'{{\\fontsize{{11pt}}{{14pt}}\\selectfont\\textit{{{escape_meta(objekttyp)}}}}}')
-            lines.append(r'\vspace{4pt}')
+            lines.append(f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\textit{{{escape_meta(objekttyp)}}}}}')
+            lines.append(r'\vspace{8pt}')
+
             for a in artifacts:
                 kn = a['katalognummer']
                 nm = escape_meta(a['name'])
                 lbl = f"art:{kn.replace('.', '-')}"
-                lines.append(
-                    f'\\noindent\\hspace*{{1.5em}}{{\\fontsize{{10pt}}{{13pt}}\\selectfont'
-                    f' {kn}\\quad {nm} \\dotfill\\ \\pageref{{{lbl}}}}}'
-                )
-                lines.append(r'\vspace{2pt}')
-            lines.append(r'\vspace{4pt}')
 
-    lines.append('')
+                # Clean one-row layout: indent, number, name, dots, page
+                entry = (
+                    f'\\noindent\\hspace*{{1.5em}}'
+                    f'{{\\fontsize{{11pt}}{{14pt}}\\selectfont'
+                    f' {kn}\\quad {nm}'
+                    f' \\dotfill\\ \\pageref{{{lbl}}}}}'
+                )
+                lines.append(entry)
+                lines.append(r'\vspace{4pt}')
+
+            lines.append(r'\vspace{2pt}')
+
+    lines.append(r'\vspace{16pt}')
     lines.append(r'\newpage')
     return '\n'.join(lines)
 
@@ -366,6 +379,13 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     doc = []
     doc.append(r'\input{catalog_styling.tex}')
     doc.append('')
+    # Determine Gattung for title + running header
+    gs = escape_meta(artifacts[0]['gattung'] if artifacts else '')
+
+    # Override running header with actual Gattung value
+    doc.append('\\fancyhead[R]{\\small\\textit{' + gs + '}}')
+    doc.append('')
+
     doc.append(r'\begin{document}')
     doc.append('')
 
@@ -373,11 +393,10 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
     doc.append(r'\vspace*{4cm}')
-    doc.append(r'{\fontsize{28pt}{34pt}\selectfont\bfseries Gattung}')
+    doc.append(f'{{\\fontsize{{28pt}}{{34pt}}\\selectfont\\bfseries {gs}}}')
     doc.append(r'\vspace{1cm}')
     doc.append(r'{\fontsize{14pt}{18pt}\selectfont Arch\"aologische Sammlung}')
     doc.append(r'\vspace{0.5cm}')
-    gs = escape_meta(artifacts[0]['gattung'] if artifacts else '')
     doc.append(f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\color{{metagray}}Stand: {gs}}}')
     doc.append(r'\vspace{3cm}')
     doc.append(r'{\fontsize{11pt}{14pt}\selectfont\color{metagray}Erstellt am \today}')
