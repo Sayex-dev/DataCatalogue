@@ -10,6 +10,7 @@ and assigns catalog numbers (Gattung.Objekttyp.Laufend).
 import csv
 import json
 import os
+import re
 import sys
 from collections import defaultdict, OrderedDict
 
@@ -58,7 +59,10 @@ def group_artifacts(rows):
         
         artifact = OrderedDict()
         artifact['object_id'] = oid
-        artifact['name'] = r0['Name'].strip()
+        raw_name = r0['Name'].strip()
+        # Strip database number: ^L? ?[^ ]* (.*)$
+        cleaned = re.sub(r'^L? ?\S+ ', '', raw_name)
+        artifact['name'] = cleaned if cleaned else raw_name
         artifact['gattung'] = r0['Gattung'].strip()
         artifact['objekttyp'] = r0['Objekttyp'].strip()
         artifact['material'] = r0.get('Material', '').strip()

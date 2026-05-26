@@ -137,12 +137,13 @@ def format_location_table(artifact):
         ds = fmt_date(loc.get('date_start', ''))
         de = fmt_date(loc.get('date_end', ''))
 
+        # Date range with fixed-width left box → all dashes aligned
         if ds and de:
-            date_str = f'{ds} \u2013 {de}'
+            date_str = f'\\makebox[3cm][r]{{{ds}}} -- {de}'
         elif ds:
-            date_str = f'{ds} \u2013'
+            date_str = f'\\makebox[3cm][r]{{{ds}}} --'
         elif de:
-            date_str = f'\u2013 {de}'
+            date_str = f'\\makebox[3cm][r]{{}} -- {de}'
         else:
             date_str = 'unbekannt'
 
@@ -164,13 +165,13 @@ def format_location_table(artifact):
         r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{>{\raggedright\arraybackslash}p{4.5cm} >{\raggedright\arraybackslash}p{5cm} >{\raggedright\arraybackslash}p{4cm}}',
+        r'\begin{longtable}{@{}>{\raggedright\arraybackslash}p{5cm}@{\hspace{6pt}}>{\raggedright\arraybackslash}p{5.3cm}@{\hspace{6pt}}>{\raggedright\arraybackslash}p{5.3cm}@{}}',
         r'\toprule',
-        r'\textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
+        r'\textbf{Ort} & \multicolumn{1}{c}{\textbf{Zeitraum}} & \textbf{Sammler} \\',
         r'\midrule',
         r'\endfirsthead',
         r'\toprule',
-        r'\textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
+        r'\textbf{Ort} & \multicolumn{1}{c}{\textbf{Zeitraum}} & \textbf{Sammler} \\',
         r'\midrule',
         r'\endhead',
     ]
@@ -187,7 +188,9 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
     """Generate LaTeX for one artifact with minipage layout."""
     lines = []
     kn = artifact['katalognummer']
-    name = escape_meta(artifact['name'])
+    artifact_name = escape_meta(artifact['name'])
+    # Title with catalog number in gray, slightly smaller
+    title = f'{{\\fontsize{{17pt}}{{21pt}}\\selectfont\\color{{metagray}}{kn}}} {artifact_name}'
     oid = artifact['object_id']
     fo = artifact.get('fundort', {})
 
@@ -232,10 +235,8 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
     lines.append('%' + '-' * 60)
     lines.append('')
 
-    # Catalog number (small, above title)
-    lines.append(f'\\catnum{{{kn}}}')
-    # Title (full width) — stays on same page with content below
-    lines.append(f'\\artifacttitle{{{name}}}')
+    # Title (full width) — catalog number in gray
+    lines.append(f'\\artifacttitle{{{title}}}')
     lines.append('')
     lines.append(r'\vspace{4pt}')
 
