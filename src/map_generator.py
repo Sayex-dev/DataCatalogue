@@ -174,22 +174,6 @@ def create_map(artifact, output_dir, bilder_dir=None):
     ax.legend(handles=legend_elements, loc='lower left', fontsize=7,
               framealpha=0.9, edgecolor='#cccccc')
     
-    # Title
-    fo_name = artifact.get('fundort', {}).get('name', '') or artifact.get('fundort', {}).get('location_reference', '')
-    title_parts = [f"Standortverlauf: {artifact['name']}"]
-    if fo_name:
-        title_parts.append(f"Fundort: {fo_name}")
-    ax.set_title(' -- '.join(title_parts),
-                 fontsize=10, pad=10, color='#333333')
-    
-    # Add fundort name as text annotation on the map itself
-    if fo_name:
-        ax.text(0.02, 0.97, f'Fundort: {fo_name}',
-                transform=ax.transAxes, fontsize=8, fontweight='bold',
-                verticalalignment='top',
-                bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.85,
-                          edgecolor='#d4451a', linewidth=1.0))
-    
     plt.tight_layout()
     
     # Save

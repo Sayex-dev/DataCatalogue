@@ -112,11 +112,30 @@ def format_location_table(artifact):
     if not locations:
         return ''
 
+    def fmt_date(date_str):
+        """Convert date to DD.MM.YYYY dot format."""
+        if not date_str:
+            return ''
+        s = date_str.strip()
+        if s == '\u221e':
+            return 'heute'
+        # Remove trailing .0 on year-only floats (e.g. "1800.0")
+        if s.endswith('.0') and s[:-2].replace('.', '', 1).isdigit():
+            return s[:-2]
+        # YYYY-MM-DD → DD.MM.YYYY
+        parts = s.split('-')
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            return f'{parts[2]}.{parts[1]}.{parts[0]}'
+        # YYYY-MM → MM.YYYY (edge case)
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            return f'{parts[1]}.{parts[0]}'
+        return s
+
     rows = []
     for loc in locations:
         label = escape_meta(loc.get('label', ''))
-        ds = escape_meta(loc.get('date_start', ''))
-        de = escape_meta(loc.get('date_end', ''))
+        ds = fmt_date(loc.get('date_start', ''))
+        de = fmt_date(loc.get('date_end', ''))
 
         if ds and de:
             date_str = f'{ds} \u2013 {de}'
@@ -145,7 +164,7 @@ def format_location_table(artifact):
         r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{p{4.5cm} p{5cm} p{4cm}}',
+        r'\begin{longtable}{>{\raggedright\arraybackslash}p{4.5cm} >{\raggedright\arraybackslash}p{5cm} >{\raggedright\arraybackslash}p{4cm}}',
         r'\toprule',
         r'\textbf{Ort} & \textbf{Zeitraum} & \textbf{Sammler} \\',
         r'\midrule',
@@ -176,22 +195,22 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
     meta_lines = []
     meta_lines.append(f"{escape_meta(artifact['gattung'])} -- {escape_meta(artifact['objekttyp'])}")
     if artifact.get('material'):
-        meta_lines.append(f"Material: {escape_meta(artifact['material'])}")
+        meta_lines.append(escape_meta(artifact['material']))
     if artifact.get('groesse'):
-        meta_lines.append(f"Gr\u00f6sse: {escape_meta(artifact['groesse'])}")
+        meta_lines.append(escape_meta(artifact['groesse']))
     if artifact.get('kulturkreis'):
-        meta_lines.append(f"Kulturkreis: {escape_meta(artifact['kulturkreis'])}")
+        meta_lines.append(escape_meta(artifact['kulturkreis']))
     if artifact.get('datierung'):
-        meta_lines.append(f"Datierung: {escape_meta(artifact['datierung'])}")
+        meta_lines.append(escape_meta(artifact['datierung']))
     if artifact.get('kuenstler'):
-        meta_lines.append(f"K\u00fcnstler: {escape_meta(artifact['kuenstler'])}")
+        meta_lines.append(escape_meta(artifact['kuenstler']))
     if artifact.get('erhaltung'):
-        meta_lines.append(f"Erhaltung: {escape_meta(artifact['erhaltung'])}")
+        meta_lines.append(escape_meta(artifact['erhaltung']))
     fo_loc = fo.get('location_reference', '').strip() or fo.get('name', '').strip()
     if fo_loc:
-        meta_lines.append(f"{{[Fundort]}} {escape_meta(fo_loc)}")
+        meta_lines.append(escape_meta(fo_loc))
     if artifact.get('katalog_fischer'):
-        meta_lines.append(f"Katalog Fischer: {escape_meta(artifact['katalog_fischer'])}")
+        meta_lines.append(escape_meta(artifact['katalog_fischer']))
 
     # Images
     img_paths = []
