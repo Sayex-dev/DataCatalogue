@@ -357,20 +357,12 @@ def generate_toc_section(data):
     lines.append(r'\vspace{20pt}')
 
     for gattung, objektypen in toc.items():
-        lines.append('')
-        lines.append(r'\vspace{8pt}')
-        lines.append(
-            f'{{\\fontsize{{16pt}}{{20pt}}\\selectfont\\bfseries '
-            f'{escape_meta(gattung)}\\par}}'
-        )
-        lines.append(r'\vspace{4pt}')
-        lines.append(r'\noindent\rule{\textwidth}{0.3pt}')
-        lines.append(r'\par\vspace{10pt}')
-
         for objekttyp, artifacts in objektypen.items():
+            lines.append('')
+            lines.append(r'\vspace{8pt}')
             lines.append(
                 f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\itshape '
-                f'{escape_meta(objekttyp)}\\par}}'
+                f'{escape_meta(gattung)}\\par}}'
             )
             lines.append(r'\vspace{8pt}')
 
@@ -425,14 +417,10 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
     doc.append(r'\vspace*{\fill}')
-    doc.append(f'{{\\fontsize{{36pt}}{{44pt}}\\selectfont\\bfseries {gs}}}')
+    doc.append(r'{\fontsize{36pt}{44pt}\selectfont\bfseries Katalog}')
     doc.append(r'\par\vspace{12pt}')
     doc.append(r'\rule{0.5\textwidth}{0.8pt}')
-    doc.append(r'\par\vspace{16pt}')
-    doc.append(r'{\fontsize{16pt}{20pt}\selectfont Arch\"aologische Sammlung}')
     doc.append(r'\vspace*{\fill}')
-    doc.append(r'{\fontsize{11pt}{14pt}\selectfont\color{metagray}Erstellt am \today}')
-    doc.append(r'\par\vspace{2cm}')
     doc.append(r'\end{center}')
     doc.append(r'\newpage')
     doc.append('')
