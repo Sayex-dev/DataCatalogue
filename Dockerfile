@@ -8,6 +8,7 @@ RUN apt-get update && \
         texlive-lang-german \
         texlive-fonts-recommended \
         texlive-fonts-extra \
+        tex-gyre \
         texlive-pictures \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
