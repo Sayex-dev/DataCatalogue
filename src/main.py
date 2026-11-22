@@ -51,7 +51,7 @@ def main():
     print("\n[2/4] Generating location maps (may download cartopy data on first run)...")
     result = subprocess.run(
         [sys.executable, os.path.join(src, 'map_generator.py'), data_path, map_dir, bilder_dir],
-        capture_output=True, text=True, timeout=600
+        capture_output=True, text=True, timeout=1200
     )
     print(result.stdout)
     if result.returncode != 0:
