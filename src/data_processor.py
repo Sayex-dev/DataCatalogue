@@ -5,122 +5,258 @@ for the catalog generation pipeline.
 
 Groups rows by Object ID, merges static fields, collects collection history,
 and assigns catalog numbers (Gattung.Objekttyp.Laufend).
+
+The database export renames columns between releases. Every field access goes
+through COLUMN_ALIASES / get_field(), so a rename only needs one edit here.
 """
 
 import csv
+import io
 import json
-import os
 import re
 import sys
 from collections import defaultdict, OrderedDict
 
+# Canonical field -> CSV columns, first matching column wins.
+# Current export column names come first, older names are kept as fallbacks.
+COLUMN_ALIASES = {
+    'object_id': ('Object ID',),
+    'name': ('Name',),
+    'katalognummer_raw': ('Katalognummer',),
+    'objektname': ('Objektname',),
+    'gattung': ('Gattung', 'Materialgattung'),
+    'objekttyp': ('Objekttyp', 'Objektgattung'),
+    'obergattung': ('Obergattung',),
+    'material': ('Material', 'Materialien'),
+    'groesse': ('Grösse',),
+    'datierung': ('Datierung',),
+    'kulturkreis': ('Kulturkreis',),
+    'kuenstler': ('Künstler',),
+    'erhaltung': ('Erhaltung',),
+    'beschreibung_fischer': ('Beschreibung Katalog Fischer',),
+    'beschreibung_extern': ('Beschreibung extern',),
+    'beschreibung_mie': ('Beschreibung durch MIE',),
+    'katalog_fischer': ('Katalog Fischer', 'Lot-Nr. Katalog Fischer 1936'),
+    'annotationen': ('Annotationen Kataloge', 'Anmerkungen'),
+    'referenz_literatur': ('Referenz in Literatur',),
+    'vergleiche': ('Vergleiche',),
+    'weitere_info_fundort': ('weitere Informationen zum Fundort',),
+    'auktionen': ('Auktionen', 'Auktionen und Verkäufe'),
+    'provenienz': ('Provenienz',),
+    'aktueller_standort': ('aktueller Standort',),
+    'eigentuemer': ('Eigentümer', 'aktuelle Eigentümer:in'),
+    'status': ('Status',),
+    'inv_nr_uzh': ('Inv. Nr. Archäologische Sammlung UZH',),
+    'platzierung_haus': ('Platzierung in Haus',),
+    'bild': ('Bild',),
+    'bildreferenz': ('Bildreferenz',),
+    'bildquelle': ('Bildquelle',),
+    'fundort_date_start': ('[Fundort] Date Start',),
+    'fundort_date_end': ('[Fundort] Date End',),
+    'fundort_location_reference': ('[Fundort] Location Reference',),
+    'fundort_geometry': ('[Fundort] Geometry',),
+    'fundort_name': ('[Fundort] Name',),
+    'fundort_finder': ('[Fundort] Finder',),
+    'ic_date_start': ('[in collection] Date Start',),
+    'ic_date_end': ('[in collection] Date End',),
+    'ic_location_reference': ('[in collection] Location Reference',),
+    'ic_geometry': ('[in collection] Geometry',),
+    'ic_sammler': ('[in collection] Sammler',),
+}
+
+# Without these the export cannot be processed at all.
+REQUIRED_COLUMNS = ('Object ID', 'Name')
+
+ENCODINGS = ('utf-8-sig', 'cp1252')
+
+
+def get_field(row, key, default=''):
+    """Read a canonical field from a CSV row, following COLUMN_ALIASES."""
+    for column in COLUMN_ALIASES.get(key, (key,)):
+        if column in row:
+            value = row[column]
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return default
+
 
 def parse_csv(csv_path):
-    """Read CSV with proper handling of multiline fields."""
-    with open(csv_path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-    return rows
+    """Read the CSV, tolerating a BOM and legacy Windows-1252 exports."""
+    text = None
+    for encoding in ENCODINGS:
+        try:
+            with open(csv_path, 'r', encoding=encoding, newline='') as f:
+                text = f.read()
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise SystemExit(
+            f'[data_processor] ERROR: {csv_path} is neither UTF-8 nor CP1252 '
+            'encoded'
+        )
+
+    reader = csv.DictReader(io.StringIO(text, newline=''))
+    # Some exports carry trailing spaces in the header names.
+    reader.fieldnames = [(f or '').strip() for f in (reader.fieldnames or [])]
+    return list(reader), list(reader.fieldnames)
+
+
+def resolve_columns(fieldnames):
+    """Return {canonical field: CSV column actually used}."""
+    resolved = {}
+    for key, columns in COLUMN_ALIASES.items():
+        for column in columns:
+            if column in fieldnames:
+                resolved[key] = column
+                break
+    return resolved
+
+
+def validate_columns(fieldnames):
+    """Fail early with an actionable message instead of a KeyError deep inside."""
+    missing = [c for c in REQUIRED_COLUMNS if c not in fieldnames]
+    if missing:
+        raise SystemExit(
+            '[data_processor] ERROR: the export is missing required column(s): '
+            + ', '.join(missing)
+            + '\n[data_processor] Columns found:\n  - '
+            + '\n  - '.join(fieldnames)
+            + '\n[data_processor] If a column was renamed, add the new name to '
+            'COLUMN_ALIASES in src/data_processor.py.'
+        )
+
+    resolved = resolve_columns(fieldnames)
+    absent = [key for key in COLUMN_ALIASES if key not in resolved]
+    if absent:
+        print('[data_processor] WARNING: no column found for these fields: '
+              + ', '.join(absent))
 
 
 def normalize_date(date_str):
-    """Normalize date string for comparison. Returns (sortable, display)."""
-    date_str = date_str.strip()
-    if not date_str:
+    """Normalize a date string for sorting. Returns (sortable, display)."""
+    text = (date_str or '').strip()
+    if not text:
         return (None, None)
-    # Replace ∞ with a far-future sentinel
-    display = date_str.replace('∞', 'heute')
-    # For sorting: ∞ → 9999, extract numeric start
-    sort_val = date_str.replace('∞', '9999-99-99')
-    return (sort_val, display)
+
+    # -∞ means "no known start", ∞ means "still ongoing"
+    if '∞' in text:
+        if text.lstrip().startswith('-'):
+            return ('-9999-99-99', '')
+        return ('9999-99-99', text.replace('∞', 'heute'))
+    return (text, text)
+
+
+def clean_name(raw_name, katalognummer='', objektname=''):
+    """
+    Strip the database number from the display name.
+
+    The export prefixes Name with Katalognummer (e.g. "42 L 1752 Fischteller").
+    Objektname already holds the cleaned value whenever the database has one.
+    """
+    name = (raw_name or '').strip()
+    if (objektname or '').strip():
+        return objektname.strip()
+
+    number = (katalognummer or '').strip()
+    if number and name.startswith(number):
+        rest = name[len(number):].strip()
+        if rest:
+            return rest.lstrip()
+
+    # Fallback: strip leading number tokens one by one, e.g.
+    # "42 L 1752 (L 242) Fischteller" -> "Fischteller".
+    token = re.compile(
+        r'^(?:L\s?\d+[a-c]?|\d+[a-c]?(?:-\w+)?|\(\s*L\s?\d+\s*\))\s+'
+    )
+    cleaned = name
+    while True:
+        stripped = token.sub('', cleaned, count=1)
+        if stripped == cleaned or not stripped.strip():
+            break
+        cleaned = stripped
+    return cleaned.strip() or name
+
+
 
 
 def group_artifacts(rows):
     """
     Group rows by Object ID into unified artifact records.
-    
+
     Each artifact gets:
     - Static fields (same across all rows)
     - Unique images
     - Collection history (chronological)
     - Fundort information
     """
-    # Group rows by Object ID
     groups = defaultdict(list)
     for row in rows:
-        oid = row['Object ID'].strip()
-        groups[oid].append(row)
-    
+        oid = get_field(row, 'object_id')
+        if oid:
+            groups[oid].append(row)
+
     artifacts = []
-    
+
     for oid, group_rows in groups.items():
-        # Identify static fields (same value across all rows)
         r0 = group_rows[0]
-        
+
         artifact = OrderedDict()
         artifact['object_id'] = oid
-        raw_name = r0['Name'].strip()
-        # Strip database number: ^L? ?[^ ]* (.*)$
-        cleaned = re.sub(r'^L? ?\S+ ', '', raw_name)
-        artifact['name'] = cleaned if cleaned else raw_name
-        artifact['gattung'] = r0['Gattung'].strip()
-        artifact['objekttyp'] = r0['Objekttyp'].strip()
-        artifact['material'] = r0.get('Material', '').strip()
-        artifact['groesse'] = r0.get('Grösse', '').strip()
-        artifact['datierung'] = r0.get('Datierung', '').strip()
-        artifact['kulturkreis'] = r0.get('Kulturkreis', '').strip()
-        artifact['kuenstler'] = r0.get('Künstler', '').strip()
-        artifact['beschreibung_extern'] = r0.get('Beschreibung extern', '').strip()
-        artifact['beschreibung_mie'] = r0.get('Beschreibung durch MIE', '').strip()
-        artifact['katalog_fischer'] = r0.get('Katalog Fischer', '').strip()
-        artifact['annotationen'] = r0.get('Annotationen Kataloge', '').strip()
-        artifact['erhaltung'] = r0.get('Erhaltung', '').strip()
-        artifact['referenz_literatur'] = r0.get('Referenz in Literatur', '').strip()
-        artifact['vergleiche'] = r0.get('Vergleiche', '').strip()
-        artifact['weitere_info_fundort'] = r0.get('weitere Informationen zum Fundort', '').strip()
-        artifact['auktionen'] = r0.get('Auktionen', '').strip()
-        
-        # Fundort (should be same across rows, but collect anyway)
+        artifact['name'] = clean_name(
+            get_field(r0, 'name'),
+            get_field(r0, 'katalognummer_raw'),
+            get_field(r0, 'objektname'),
+        )
+        for key in ('gattung', 'objekttyp', 'obergattung', 'material',                    'groesse', 'datierung', 'kulturkreis', 'kuenstler',
+                    'erhaltung', 'beschreibung_fischer',
+                    'beschreibung_extern', 'beschreibung_mie',
+                    'katalog_fischer', 'annotationen', 'referenz_literatur',
+                    'vergleiche', 'weitere_info_fundort', 'auktionen',
+                    'provenienz', 'aktueller_standort', 'eigentuemer',
+                    'status', 'inv_nr_uzh', 'platzierung_haus',
+                    'bildreferenz', 'bildquelle'):
+            artifact[key] = get_field(r0, key)
+
         artifact['fundort'] = {
-            'date_start': r0.get('[Fundort] Date Start', '').strip(),
-            'date_end': r0.get('[Fundort] Date End', '').strip(),
-            'location_reference': r0.get('[Fundort] Location Reference', '').strip(),
-            'geometry': r0.get('[Fundort] Geometry', '').strip(),
-            'name': r0.get('[Fundort] Name', '').strip(),
-            'finder': r0.get('[Fundort] Finder', '').strip(),
+            'date_start': get_field(r0, 'fundort_date_start'),
+            'date_end': get_field(r0, 'fundort_date_end'),
+            'location_reference': get_field(r0, 'fundort_location_reference'),
+            'geometry': get_field(r0, 'fundort_geometry'),
+            'name': get_field(r0, 'fundort_name'),
+            'finder': get_field(r0, 'fundort_finder'),
         }
-        
-        # Unique images (deduplicated)
+
+        # Unique images (deduplicated, order preserved)
         images = []
         seen = set()
         for row in group_rows:
-            img = row.get('Bild', '').strip()
+            img = get_field(row, 'bild')
             if img and img not in seen:
                 seen.add(img)
                 images.append(img)
         artifact['images'] = images
-        
+
         # Collection history (unique combinations, chronologically sorted)
         history_set = set()
         for row in group_rows:
             hist = (
-                row.get('[in collection] Date Start', '').strip(),
-                row.get('[in collection] Date End', '').strip(),
-                row.get('[in collection] Location Reference', '').strip(),
-                row.get('[in collection] Sammler', '').strip(),
-                row.get('[in collection] Geometry', '').strip(),
-                row.get('aktueller Standort', '').strip(),
-                row.get('Eigentümer', '').strip(),
-                row.get('Status', '').strip(),
+                get_field(row, 'ic_date_start'),
+                get_field(row, 'ic_date_end'),
+                get_field(row, 'ic_location_reference'),
+                get_field(row, 'ic_sammler'),
+                get_field(row, 'ic_geometry'),
+                get_field(row, 'aktueller_standort'),
+                get_field(row, 'eigentuemer'),
+                get_field(row, 'status'),
             )
             if any(hist):  # Only add if there's some data
                 history_set.add(hist)
-        
-        # Sort history by date_start
+
         history_list = []
         for h in history_set:
             sort_key, display_start = normalize_date(h[0])
-            sort_key_end, display_end = normalize_date(h[1])
+            _, display_end = normalize_date(h[1])
             history_list.append({
                 'date_start': h[0],
                 'date_end': h[1],
@@ -134,49 +270,53 @@ def group_artifacts(rows):
                 'status': h[7],
                 'sort_key': sort_key or '0000',
             })
-        
+
         history_list.sort(key=lambda x: x['sort_key'])
         artifact['collection_history'] = history_list
-        
-        # Build chronological location list for map (Fundort + collection locations)
+
+        # Chronological location list for map and location table
         artifact['all_locations'] = build_location_timeline(artifact)
-        
+
         artifacts.append(artifact)
-    
+
     return artifacts
 
 
 def build_location_timeline(artifact):
     """Build a chronological list of all locations for mapping."""
     locations = []
-    
+
     # Fundort (origin)
     fo = artifact['fundort']
     fo_date = fo['date_end'] or fo['date_start'] or 'unbekannt'
-    is_fundort = True
-    
+    fo_label = fo.get('name') or fo.get('location_reference') or ''
+
     fo_geom = parse_geometry_center(fo.get('geometry', ''))
     if fo_geom:
         locations.append({
             'type': 'Fundort',
-            'label': fo.get('name') or fo.get('location_reference') or 'Fundort',
+            'label': fo_label or 'Fundort',
+            'ort': fo.get('name', ''),
             'date': fo_date,
             'date_start': fo.get('date_start', ''),
             'date_end': fo.get('date_end', ''),
             'geometry': fo_geom,
             'is_fundort': True,
         })
-    
+
     # Collection locations (already chronological)
     for entry in artifact['collection_history']:
         ic_geom = parse_geometry_center(entry.get('geometry', ''))
-        loc_label = entry.get('location_reference', '') or entry.get('sammler', '') or entry.get('aktueller_standort', '')
+        loc_label = (entry.get('location_reference', '')
+                     or entry.get('sammler', '')
+                     or entry.get('aktueller_standort', ''))
         date_label = entry.get('date_start_display', '')
-        
+
         if loc_label:
             locations.append({
                 'type': 'in collection',
                 'label': loc_label,
+                'ort': entry.get('aktueller_standort', ''),
                 'date': date_label,
                 'date_start': entry.get('date_start', ''),
                 'date_end': entry.get('date_end', ''),
@@ -184,7 +324,7 @@ def build_location_timeline(artifact):
                 'is_fundort': False,
                 'sammler': entry.get('sammler', ''),
             })
-    
+
     return locations
 
 
@@ -227,44 +367,34 @@ def extract_all_coordinates(geom):
     return coords
 
 
-def has_geometry_data(locations):
-    """Check if any location has geometry data."""
-    return any(loc.get('geometry') is not None for loc in locations)
-
-
-def has_multiple_locations(locations):
-    """Check if there are multiple distinct locations for mapping."""
-    labels = set()
-    for loc in locations:
-        geom = loc.get('geometry')
-        if geom:
-            labels.add(geom)
-    return len(labels) >= 1
 
 
 def assign_catalog_numbers(artifacts):
     """
     Assign catalog numbers in format: Gattung_Nr.Objekttyp_Nr.Laufend_Nr
-    
+
     First level: sorted by Gattung alphabetically
     Second level: within each Gattung, sorted by Objekttyp alphabetically
     Third level: within each Objekttyp, running number
+
+    Objekttyp is empty for most objects in current exports; those share the
+    "1" bucket, which keeps the numbering unique and stable.
     """
-    # Sort artifacts: Gattung → Objekttyp → Name
-    artifacts.sort(key=lambda a: (a['gattung'].lower(), a['objekttyp'].lower(), a['name'].lower()))
-    
-    # Build hierarchy
+    artifacts.sort(key=lambda a: (a['gattung'].lower(),
+                                  a['objekttyp'].lower(),
+                                  a['name'].lower()))
+
     gattung_order = {}
     objekttyp_order = {}
     gattung_counter = 0
     current_gattung = None
     current_objekttyp = None
     objekttyp_counter = 0
-    
+
     for artifact in artifacts:
         g = artifact['gattung']
         o = artifact['objekttyp']
-        
+
         if g not in gattung_order:
             gattung_counter += 1
             gattung_order[g] = gattung_counter
@@ -276,52 +406,17 @@ def assign_catalog_numbers(artifacts):
             objekttyp_counter += 1
             objekttyp_order[(g, o)] = objekttyp_counter
             current_objekttyp = o
-    
-    # Assign running numbers within each Objekttyp
+
     running = defaultdict(int)
     for artifact in artifacts:
         g = artifact['gattung']
         o = artifact['objekttyp']
         running[(g, o)] += 1
-        g_num = gattung_order[g]
-        o_num = objekttyp_order[(g, o)]
-        r_num = running[(g, o)]
-        artifact['katalognummer'] = f"{g_num}.{o_num}.{r_num}"
-    
+        artifact['katalognummer'] = (
+            f"{gattung_order[g]}.{objekttyp_order[(g, o)]}.{running[(g, o)]}"
+        )
+
     return artifacts
-
-
-def process(input_path, output_path):
-    """Main processing function."""
-    print(f"[data_processor] Reading {input_path}...")
-    rows = parse_csv(input_path)
-    print(f"[data_processor]   {len(rows)} rows read")
-    
-    print(f"[data_processor] Grouping artifacts...")
-    artifacts = group_artifacts(rows)
-    print(f"[data_processor]   {len(artifacts)} unique artifacts identified")
-    
-    print(f"[data_processor] Assigning catalog numbers...")
-    artifacts = assign_catalog_numbers(artifacts)
-    
-    for a in artifacts:
-        print(f"[data_processor]   {a['katalognummer']}: {a['name'][:60]}")
-        print(f"[data_processor]     Images: {len(a['images'])}, History: {len(a['collection_history'])}, Locations: {len(a['all_locations'])}")
-    
-    # Build TOC structure
-    toc = build_toc(artifacts)
-    
-    result = {
-        'artifacts': artifacts,
-        'toc': toc,
-        'total_artifacts': len(artifacts),
-    }
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    print(f"[data_processor] Output written to {output_path}")
-    
-    return result
 
 
 def build_toc(artifacts):
@@ -341,7 +436,59 @@ def build_toc(artifacts):
     return toc
 
 
+def process(input_path, output_path):
+    """Main processing function."""
+    print(f'[data_processor] Reading {input_path}...')
+    rows, fieldnames = parse_csv(input_path)
+    validate_columns(fieldnames)
+    print(f'[data_processor]   {len(rows)} rows read')
+
+    resolved = resolve_columns(fieldnames)
+    print('[data_processor] Column mapping:')
+    for key in ('gattung', 'objekttyp', 'material', 'katalog_fischer',
+                'annotationen', 'auktionen', 'eigentuemer',
+                'beschreibung_fischer'):
+        column = resolved.get(key)
+        print(f"[data_processor]   {key:<22} <- {column or 'MISSING'}")
+
+    print('[data_processor] Grouping artifacts...')
+    artifacts = group_artifacts(rows)
+    print(f'[data_processor]   {len(artifacts)} unique artifacts identified')
+
+    print('[data_processor] Assigning catalog numbers...')
+    artifacts = assign_catalog_numbers(artifacts)
+
+    empty_gattung = [a for a in artifacts if not a['gattung']]
+    if empty_gattung:
+        print(f'[data_processor] WARNING: {len(empty_gattung)} artifacts have no '
+              "Gattung and are listed under 'Ohne Gattung'")
+    numeric_names = [a for a in artifacts if a['name'].isdigit()]
+    if numeric_names:
+        print(f'[data_processor] WARNING: {len(numeric_names)} artifacts only '
+              'have a numeric name (no Objektname in the export)')
+
+    for a in artifacts:
+        print(f"[data_processor]   {a['katalognummer']}: {a['name'][:60]}")
+        print(f"[data_processor]     Images: {len(a['images'])}, "
+              f"History: {len(a['collection_history'])}, "
+              f"Locations: {len(a['all_locations'])}")
+
+    result = {
+        'artifacts': artifacts,
+        'toc': build_toc(artifacts),
+        'total_artifacts': len(artifacts),
+        'source_columns': fieldnames,
+        'column_mapping': resolved,
+    }
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    print(f'[data_processor] Output written to {output_path}')
+
+    return result
+
+
 if __name__ == '__main__':
-    csv_path = sys.argv[1] if len(sys.argv) > 1 else '/opt/hermes/work/artefakte_export.csv'
-    output_path = sys.argv[2] if len(sys.argv) > 2 else '/opt/hermes/work/artifacts_data.json'
+    csv_path = sys.argv[1] if len(sys.argv) > 1 else 'artefakte_export.csv'
+    output_path = sys.argv[2] if len(sys.argv) > 2 else 'artifacts_data.json'
     process(csv_path, output_path)

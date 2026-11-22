@@ -5,16 +5,58 @@ LaTeX Generator - Produces .tex file from structured artifact data.
 
 import json
 import os
-import sys
 import re
+import sys
+
+# Characters that pdflatex cannot typeset with the current font setup.
+# Values are LaTeX replacements; None means "keep as is".
+UNICODE_REPLACEMENTS = {
+    '\u221e': r'\(\infty\)',      # ∞
+    '\u2013': '--',               # –
+    '\u2014': '---',              # —
+    '\u201e': '"',                # „
+    '\u201c': '"',                # "
+    '\u201d': '"',                # "
+    '\u2019': "'",                # ’
+    '\u2026': '...',              # …
+    '\u0161': r'\v{s}',           # š
+    '\u00d7': r'\(\times\)',      # ×
+    '\u00b7': r'\textperiodcentered{}',  # ·
+    '\u2032': r"$'$",             # ′
+    '\u2033': r"$''$",            # ″
+    '\u2264': r'\(\leq\)',        # ≤
+    '\u2265': r'\(\geq\)',        # ≥
+    '\u00a0': '~',                # non-breaking space
+}
+
+# Characters the T1/tgtermes font set can render directly.
+SAFE_UNICODE = set('äöüÄÖÜßéèàâêîôûçñáíóú')
+
+# Filled while generating; reported at the end of the run.
+UNKNOWN_UNICODE = {}
+
+
+def sanitize_unicode(text):
+    """Replace characters pdflatex cannot handle and track unknown ones."""
+    if not text:
+        return ''
+    out = []
+    for ch in text:
+        if ord(ch) < 128 or ch in SAFE_UNICODE:
+            out.append(ch)
+        elif ch in UNICODE_REPLACEMENTS:
+            out.append(UNICODE_REPLACEMENTS[ch])
+        else:
+            UNKNOWN_UNICODE[ch] = UNKNOWN_UNICODE.get(ch, 0) + 1
+            out.append(ch)
+    return ''.join(out)
 
 
 def latex_escape(text):
-    """Escape text for LaTeX body text. Unicode → LaTeX after normal escaping."""
+    """Escape text for LaTeX body text. Unicode is normalized afterwards."""
     if not text:
         return ''
 
-    # Character-level escaping (skip $ so math mode survives)
     escape_map = {
         '&': r'\&', '%': r'\%', '#': r'\#', '_': r'\_',
         '{': r'\{', '}': r'\}', '~': r'\textasciitilde{}', '^': r'\^{}',
@@ -22,7 +64,8 @@ def latex_escape(text):
     result = []
     i = 0
     while i < len(text):
-        if text[i] == '\\' and i + 1 < len(text) and text[i+1].isalpha():
+        if text[i] == '\\' and i + 1 < len(text) and text[i + 1].isalpha():
+            # Keep existing LaTeX commands intact
             result.append(text[i])
             i += 1
             while i < len(text) and text[i].isalpha():
@@ -35,27 +78,17 @@ def latex_escape(text):
             result.append(text[i])
         i += 1
 
-    escaped = ''.join(result)
-
-    # Unicode → LaTeX (after escaping, so math-mode $ stays intact)
-    escaped = escaped.replace('\u221e', r'\(\infty\)')   # ∞
-    escaped = escaped.replace('\u2013', '--')            # –
-    escaped = escaped.replace('\u2014', '---')           # —
-    escaped = escaped.replace('\u201e', '"')             # „
-    escaped = escaped.replace('\u201c', '"')             # "
-    escaped = escaped.replace('\u2026', '...')           # …
-
-    return escaped
+    return sanitize_unicode(''.join(result))
 
 
 def escape_meta(text):
-    """Escape text for metadata fields. Newlines → \\, then escape + Unicode."""
+    """Escape text for metadata fields. Newlines become line breaks."""
     if not text:
         return ''
 
     text = text.replace('\r\n', '\n').replace('\r', '\n')
-    lines = text.split('\n')
-    text = r' \\ '.join(line.strip() for line in lines if line.strip())
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    text = r' \\ '.join(lines)
 
     escape_map = {
         '&': r'\&', '%': r'\%', '#': r'\#', '_': r'\_',
@@ -64,18 +97,11 @@ def escape_meta(text):
     for char, repl in escape_map.items():
         text = text.replace(char, repl)
 
-    text = text.replace('\u221e', r'\(\infty\)')
-    text = text.replace('\u2013', '--')
-    text = text.replace('\u2014', '---')
-    text = text.replace('\u201e', '"')
-    text = text.replace('\u201c', '"')
-    text = text.replace('\u2026', '...')
-
-    return text
+    return sanitize_unicode(text)
 
 
 def format_body_text(text):
-    """Blank lines → \\par, single newlines → spaces."""
+    """Blank lines become new paragraphs, single newlines become spaces."""
     if not text:
         return ''
     paragraphs = re.split(r'\n\s*\n', text)
@@ -89,6 +115,8 @@ def format_body_text(text):
 
 def find_image_file(img_name, bilder_dir):
     """Find image file, handling naming mismatches like .jpg.jpg."""
+    if not img_name:
+        return None
     exact = os.path.join(bilder_dir, img_name)
     if os.path.isfile(exact):
         return exact
@@ -99,41 +127,77 @@ def find_image_file(img_name, bilder_dir):
         base, ext = os.path.splitext(base)
         if not ext:
             break
-        for fname in os.listdir(bilder_dir):
-            if fname.startswith(base) and os.path.isfile(os.path.join(bilder_dir, fname)):
+        for fname in sorted(os.listdir(bilder_dir)):
+            if fname.startswith(base) and os.path.isfile(
+                    os.path.join(bilder_dir, fname)):
                 return os.path.join(bilder_dir, fname)
 
     return None
 
 
+def split_references(value):
+    """Split ';'-separated image references into a list."""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(';') if part.strip()]
+
+
+def fmt_date(date_str):
+    """Convert a database date to DD.MM.YYYY, resolving ±∞."""
+    if not date_str:
+        return ''
+    s = date_str.strip()
+    if s in ('\u221e', '+\u221e'):
+        return 'heute'
+    if s == '-\u221e':
+        return 'unbekannt'
+    # Remove trailing .0 on year-only floats (e.g. "1800.0")
+    if s.endswith('.0') and s[:-2].replace('.', '', 1).isdigit():
+        return s[:-2]
+    # YYYY-MM-DD → DD.MM.YYYY
+    parts = s.split('-')
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        return f'{parts[2]}.{parts[1]}.{parts[0]}'
+    # YYYY-MM → MM.YYYY
+    if len(parts) == 2 and all(p.isdigit() for p in parts):
+        return f'{parts[1]}.{parts[0]}'
+    return s
+
+
+def format_entry_fields(artifact):
+    """Steckbrief fields in the order requested by the editorship."""
+    def clean(value):
+        return escape_meta(value) if value else ''
+
+    rows = [
+        ('Standort', clean(artifact.get('aktueller_standort'))),
+        ('Eigentümer', clean(artifact.get('eigentuemer'))),
+        ('Status', clean(artifact.get('status'))),
+        ('Material', clean(artifact.get('material'))),
+        ('Grösse', clean(artifact.get('groesse'))),
+        ('Datierung', clean(artifact.get('datierung'))),
+        ('Kulturkreis', clean(artifact.get('kulturkreis'))),
+        ('Angaben Fundort', clean(artifact.get('weitere_info_fundort'))),
+        ('Künstler', clean(artifact.get('kuenstler'))),
+        ('Erhaltung', clean(artifact.get('erhaltung'))),
+        ('Dekor', clean(artifact.get('dekor'))),
+        ('ID Auktion', clean(artifact.get('katalog_fischer'))),
+        ('ID UZH', clean(artifact.get('inv_nr_uzh'))),
+        ('Platzierung im Haus', clean(artifact.get('platzierung_haus'))),
+    ]
+    return [f'\\textbf{{{label}:}} {value}' for label, value in rows if value]
+
+
 def format_location_table(artifact):
-    """Generate longtable of chronological location history (without Typ column)."""
+    """Generate longtable of chronological location history."""
     locations = artifact.get('all_locations', [])
     if not locations:
         return ''
 
-    def fmt_date(date_str):
-        """Convert date to DD.MM.YYYY dot format."""
-        if not date_str:
-            return ''
-        s = date_str.strip()
-        if s == '\u221e':
-            return 'heute'
-        # Remove trailing .0 on year-only floats (e.g. "1800.0")
-        if s.endswith('.0') and s[:-2].replace('.', '', 1).isdigit():
-            return s[:-2]
-        # YYYY-MM-DD → DD.MM.YYYY
-        parts = s.split('-')
-        if len(parts) == 3 and all(p.isdigit() for p in parts):
-            return f'{parts[2]}.{parts[1]}.{parts[0]}'
-        # YYYY-MM → MM.YYYY (edge case)
-        if len(parts) == 2 and all(p.isdigit() for p in parts):
-            return f'{parts[1]}.{parts[0]}'
-        return s
-
     rows = []
     for loc in locations:
         label = escape_meta(loc.get('label', ''))
+        ort = escape_meta(loc.get('ort', ''))
         ds = fmt_date(loc.get('date_start', ''))
         de = fmt_date(loc.get('date_end', ''))
 
@@ -148,8 +212,9 @@ def format_location_table(artifact):
             date_str = 'unbekannt'
 
         sammler = escape_meta(loc.get('sammler', ''))
+        ort_cell = ort if ort else r'\hspace{0pt}'
 
-        row = f'{label} & {date_str}'
+        row = f'{label} & {date_str} & {ort_cell}'
         if sammler and not loc.get('is_fundort'):
             row += f' & {sammler}'
         else:
@@ -160,18 +225,25 @@ def format_location_table(artifact):
     if not rows:
         return ''
 
+    header = (
+        r'\textbf{Sammlung} & \multicolumn{1}{c}{\textbf{Zeitraum}} '
+        r'& \textbf{Ort} & \textbf{Sammler} \\'
+    )
     lines = [
         r'\vspace{8pt}',
         r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{@{}>{\raggedright\arraybackslash}p{5cm}@{\hspace{6pt}}>{\raggedright\arraybackslash}p{5.3cm}@{\hspace{6pt}}>{\raggedright\arraybackslash}p{5.3cm}@{}}',
+        r'\begin{longtable}{@{}>{\raggedright\arraybackslash}p{4.4cm}'
+        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}'
+        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}'
+        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}@{}}',
         r'\toprule',
-        r'\textbf{Ort} & \multicolumn{1}{c}{\textbf{Zeitraum}} & \textbf{Sammler} \\',
+        header,
         r'\midrule',
         r'\endfirsthead',
         r'\toprule',
-        r'\textbf{Ort} & \multicolumn{1}{c}{\textbf{Zeitraum}} & \textbf{Sammler} \\',
+        header,
         r'\midrule',
         r'\endhead',
     ]
@@ -184,48 +256,81 @@ def format_location_table(artifact):
     return '\n'.join(lines)
 
 
-def generate_artifact_entry(artifact, bilder_dir, map_dir):
+def image_entries(artifact, bilder_dir):
+    """
+    One entry per image declared in the export, in export order.
+
+    Returns dicts with index, declared name, found path (or None), caption
+    and source. Keeping a single list keeps figure numbers, captions and the
+    Abbildungsverzeichnis in sync even when a file is missing.
+    """
+    captions = split_references(artifact.get('bildreferenz'))
+    sources = split_references(artifact.get('bildquelle'))
+
+    entries = []
+    for index, name in enumerate(artifact.get('images', [])):
+        entries.append({
+            'index': index,
+            'name': name,
+            'path': find_image_file(name, bilder_dir),
+            'caption': captions[index] if index < len(captions) else '',
+            'source': sources[index] if index < len(sources) else '',
+        })
+    return entries
+
+
+def format_image_block(artifact, bilder_dir):
+    """Figures with their caption directly below the image."""
+    lines = []
+    label_base = artifact['katalognummer'].replace('.', '-')
+
+    for entry in image_entries(artifact, bilder_dir):
+        number = entry['index'] + 1
+        lines.append(r'\begin{samepage}')
+        lines.append(r'\begin{center}')
+
+        if entry['path']:
+            lines.append(
+                r'\includegraphics[width=\linewidth,height=0.32\textheight,'
+                f'keepaspectratio]{{../bilder/{os.path.basename(entry["path"])}}}'
+            )
+        else:
+            esc = (entry['name'].replace('_', r'\_').replace('&', r'\&')
+                   .replace('%', r'\%').replace('#', r'\#'))
+            lines.append(
+                r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}'
+                r'\fbox{\parbox{\linewidth}{\centering Bild nicht verfügbar:\\ '
+                r'\texttt{' + esc + r'}}}\par}'
+            )
+
+        if entry['caption']:
+            lines.append(r'\par\vspace{4pt}')
+            lines.append(
+                r'{\footnotesize\itshape '
+                + escape_meta(f'Abb. {number}: {entry["caption"]}') + r'\par}'
+            )
+        if entry['source']:
+            lines.append(
+                r'{\fontsize{8pt}{10pt}\selectfont\color{metagray}'
+                + escape_meta(f'Quelle: {entry["source"]}') + r'\par}'
+            )
+
+        lines.append(f'\\label{{art:{label_base}-img{number}}}')
+        lines.append(r'\end{center}')
+        lines.append(r'\end{samepage}')
+        lines.append(r'\vspace{10pt}')
+
+    return '\n'.join(lines)
+
+
+def generate_artifact_entry(artifact, bilder_dir):
     """Generate LaTeX for one artifact with minipage layout."""
     lines = []
     kn = artifact['katalognummer']
     artifact_name = escape_meta(artifact['name'])
-    # Title with catalog number in gray, slightly smaller
-    title = f'{{\\fontsize{{17pt}}{{21pt}}\\selectfont\\color{{metagray}}{kn}}} {artifact_name}'
-    oid = artifact['object_id']
-    fo = artifact.get('fundort', {})
+    title = (f'{{\\fontsize{{17pt}}{{21pt}}\\selectfont\\color{{metagray}}'
+             f'{kn}}} {artifact_name}')
 
-    # Metadata
-    meta_lines = []
-    meta_lines.append(f"{escape_meta(artifact['gattung'])} -- {escape_meta(artifact['objekttyp'])}")
-    if artifact.get('material'):
-        meta_lines.append(escape_meta(artifact['material']))
-    if artifact.get('groesse'):
-        meta_lines.append(escape_meta(artifact['groesse']))
-    if artifact.get('kulturkreis'):
-        meta_lines.append(escape_meta(artifact['kulturkreis']))
-    if artifact.get('datierung'):
-        meta_lines.append(escape_meta(artifact['datierung']))
-    if artifact.get('kuenstler'):
-        meta_lines.append(escape_meta(artifact['kuenstler']))
-    if artifact.get('erhaltung'):
-        meta_lines.append(escape_meta(artifact['erhaltung']))
-    fo_loc = fo.get('location_reference', '').strip() or fo.get('name', '').strip()
-    if fo_loc:
-        meta_lines.append(escape_meta(fo_loc))
-    if artifact.get('katalog_fischer'):
-        meta_lines.append(escape_meta(artifact['katalog_fischer']))
-
-    # Images
-    img_paths = []
-    missing_imgs = []
-    for img in artifact.get('images', []):
-        found = find_image_file(img, bilder_dir)
-        if found:
-            img_paths.append(found)
-        else:
-            missing_imgs.append(img)
-
-    # Build entry - each artifact starts on a new page
     lines.append('')
     lines.append(r'\newpage')
     lines.append(r'\FloatBarrier')
@@ -235,112 +340,137 @@ def generate_artifact_entry(artifact, bilder_dir, map_dir):
     lines.append('%' + '-' * 60)
     lines.append('')
 
-    # Title (full width) — catalog number in gray
     lines.append(f'\\artifacttitle{{{title}}}')
     lines.append('')
     lines.append(r'\vspace{4pt}')
 
-    # Missing image notices
-    for img in missing_imgs:
-        esc = img.replace('_', r'\_').replace('&', r'\&').replace('%', r'\%').replace('#', r'\#')
-        lines.append('')
-        lines.append(r'\begin{center}')
-        lines.append(
-            r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}'
-            r'\fbox{\parbox{0.45\textwidth}{\centering Bild nicht verfügbar:\\ \texttt{'
-            + esc + r'}}}}'
-        )
-        lines.append(r'\end{center}')
-        lines.append('')
-
-    # --- Two-column layout using paracol (breaks across pages) ---
-    # Left column: text content (can span multiple pages)
-    # Right column: images (at top, then whitespace)
-
-    # Build left column content
+    # Left column: metadata + descriptions
     left_content = []
-    left_content.append(r'\metablock{')
-    left_content.append(r' \\ '.join(meta_lines))
-    left_content.append('}')
+    fields = format_entry_fields(artifact)
+    if fields:
+        left_content.append(r'\metablock{')
+        left_content.append(r' \\ '.join(fields))
+        left_content.append('}')
 
-    # Beschreibung Extern (quoted box)
-    if artifact.get('beschreibung_extern'):
+    # Description box: catalogue text, with the external description as
+    # fallback when the export only carries one of the two texts.
+    box_text = (artifact.get('beschreibung_fischer')
+                or artifact.get('beschreibung_extern'))
+    if box_text:
         left_content.append('')
         left_content.append(r'\begin{quotebox}')
-        formatted = format_body_text(artifact['beschreibung_extern'])
-        left_content.append(latex_escape(formatted))
+        left_content.append(latex_escape(format_body_text(box_text)))
         if artifact.get('annotationen'):
             left_content.append('')
             left_content.append(r'\medskip')
-            left_content.append(r'{\footnotesize\bfseries Annotationen:} ' + escape_meta(artifact['annotationen']))
+            left_content.append(
+                r'{\footnotesize\bfseries Anmerkungen:} '
+                + escape_meta(artifact['annotationen'])
+            )
         left_content.append(r'\end{quotebox}')
         left_content.append('')
 
-    # Beschreibung MIE
     if artifact.get('beschreibung_mie'):
-        formatted = format_body_text(artifact['beschreibung_mie'])
-        left_content.append(latex_escape(formatted))
+        left_content.append(
+            latex_escape(format_body_text(artifact['beschreibung_mie']))
+        )
         left_content.append('')
 
-    # Referenzen
+    if artifact.get('provenienz'):
+        left_content.append(
+            f'\\referencetext{{Provenienz: {escape_meta(artifact["provenienz"])}}}'
+        )
     if artifact.get('referenz_literatur'):
-        left_content.append(f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}')
+        left_content.append(
+            f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}'
+        )
     if artifact.get('vergleiche'):
-        left_content.append(f'\\referencetext{{Vergleiche: {escape_meta(artifact["vergleiche"])}}}')
+        left_content.append(
+            f'\\referencetext{{Vergleiche: '
+            f'{escape_meta(artifact["vergleiche"])}}}'
+        )
     if artifact.get('auktionen'):
-        left_content.append(f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}')
+        left_content.append(
+            f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}'
+        )
 
-    left_str = '\n'.join(left_content)
+    right_str = format_image_block(artifact, bilder_dir)
 
-    # Build right column (images)
-    right_content = []
-    right_content.append(r'\vspace{0pt}')
-    if img_paths:
-        for i, ip in enumerate(img_paths):
-            right_content.append(f'\\includegraphics[width=\\linewidth,keepaspectratio]{{../bilder/{os.path.basename(ip)}}}')
-            if i < len(img_paths) - 1:
-                right_content.append(r'\vspace{8pt}')
-    else:
-        right_content.append(r'\vspace{0pt}')  # empty placeholder
-
-    right_str = '\n'.join(right_content)
-
-    # Assemble with paracol (column ratio ~55:45)
     lines.append(r'\columnratio{0.55}')
     lines.append(r'\begin{paracol}{2}')
-    lines.append(left_str)
+    lines.append('\n'.join(left_content))
     lines.append('')
     lines.append(r'\switchcolumn')
+    lines.append(r'\vspace{0pt}')
     lines.append(right_str)
     lines.append(r'\end{paracol}')
     lines.append('')
 
-    # --- Standortkarte (always on new page, with title) ---
-    map_path = os.path.join(map_dir, f'map_{oid}.png')
-    if os.path.isfile(map_path):
+    # Chronological location history (table only, no map)
+    table = format_location_table(artifact)
+    if table:
+        lines.append(r'\vspace{12pt}')
+        lines.append(table)
         lines.append('')
-        lines.append(r'\newpage')
-        lines.append(r'\FloatBarrier')
-        lines.append('')
-        lines.append(r'{\fontsize{11pt}{14pt}\selectfont\bfseries Standortkarte}')
-        lines.append(r'\vspace{6pt}')
-        lines.append('')
-        lines.append(r'\begin{center}')
-        lines.append(f'  \\includegraphics[width=0.92\\textwidth,keepaspectratio]{{./maps/{os.path.basename(map_path)}}}')
-        lines.append(r'\end{center}')
-        lines.append('')
-        tbl = format_location_table(artifact)
-        if tbl:
-            lines.append(tbl)
-            lines.append('')
 
     lines.append(r'\artifactsep')
     lines.append('')
     return '\n'.join(lines)
 
 
+def generate_figure_index(data, bilder_dir):
+    """Abbildungsverzeichnis: artifact, then one line per figure."""
+    entries = []
+    for artifact in data.get('artifacts', []):
+        images = image_entries(artifact, bilder_dir)
+        if images:
+            entries.append((artifact, images))
+
+    if not entries:
+        return ''
+
+    lines = [
+        '',
+        r'\begingroup',
+        r'\setlength{\parindent}{0pt}',
+        r'\begin{center}',
+        r'{\fontsize{22pt}{28pt}\selectfont\bfseries Abbildungsverzeichnis}',
+        r'\par\vspace{4pt}',
+        r'\rule{0.6\textwidth}{0.6pt}',
+        r'\end{center}',
+        r'\vspace{20pt}',
+    ]
+    for artifact, images in entries:
+        kn = artifact['katalognummer']
+        label = kn.replace('.', '-')
+        lines.append('')
+        lines.append(r'\vspace{8pt}')
+        lines.append(
+            r'{\fontsize{11pt}{14pt}\selectfont\bfseries '
+            f'{kn}\\quad {escape_meta(artifact["name"])}\\par}}'
+        )
+        lines.append(r'\vspace{3pt}')
+        for entry in images:
+            number = entry['index'] + 1
+            text = entry['source'] or entry['caption']
+            lines.append(
+                r'\noindent\hspace*{1.5em}{\fontsize{10pt}{13pt}'
+                r'\selectfont '
+                + escape_meta(f'Abb. {number}')
+                + (r': ' + escape_meta(text) if text else '')
+                + r'\dotfill\ '
+                + f'\\pageref{{art:{label}-img{number}}}'
+                + r'\par}'
+            )
+            lines.append(r'\vspace{2pt}')
+    lines.append(r'\vspace{16pt}')
+    lines.append(r'\endgroup')
+    lines.append(r'\newpage')
+    return '\n'.join(lines)
+
+
 def generate_toc_section(data):
-    """Generate TOC by Gattung / Objekttyp — clean layout with one artifact per row."""
+    """Generate TOC by Gattung — one artifact per row."""
     toc = data.get('toc', {})
     if not toc:
         return ''
@@ -357,23 +487,20 @@ def generate_toc_section(data):
     lines.append(r'\vspace{20pt}')
 
     for gattung, objektypen in toc.items():
-        for objekttyp, artifacts in objektypen.items():
-            lines.append('')
-            lines.append(r'\vspace{8pt}')
-            lines.append(
-                f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\itshape '
-                f'{escape_meta(gattung)}\\par}}'
-            )
-            lines.append(r'\vspace{8pt}')
-
+        heading = escape_meta(gattung) or 'Ohne Gattung'
+        lines.append('')
+        lines.append(r'\vspace{8pt}')
+        lines.append(
+            f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\itshape '
+            f'{heading}\\par}}'
+        )
+        lines.append(r'\vspace{8pt}')
+        for artifacts in objektypen.values():
             for a in artifacts:
                 kn = a['katalognummer']
                 nm = escape_meta(a['name'])
                 lbl = f"art:{kn.replace('.', '-')}"
-
-                # Clean one-row layout: indent, number, name, dots, page.
-                # Wrap in \par at the end so each entry forms its own line.
-                entry = (
+                lines.append(
                     r'\noindent{\fontsize{11pt}{14pt}\selectfont'
                     r'\hspace*{1.5em}'
                     f'{kn}\\quad {nm}'
@@ -381,10 +508,8 @@ def generate_toc_section(data):
                     f'\\pageref{{{lbl}}}'
                     r'\par}'
                 )
-                lines.append(entry)
                 lines.append(r'\vspace{4pt}')
-
-            lines.append(r'\vspace{2pt}')
+        lines.append(r'\vspace{2pt}')
 
     lines.append(r'\vspace{16pt}')
     lines.append(r'\endgroup')
@@ -392,7 +517,7 @@ def generate_toc_section(data):
     return '\n'.join(lines)
 
 
-def generate_latex(data_path, output_path, bilder_dir, map_dir):
+def generate_latex(data_path, output_path, bilder_dir):
     """Generate complete LaTeX document."""
     with open(data_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -400,18 +525,8 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     artifacts = data.get('artifacts', [])
     print(f'[latex_generator] {len(artifacts)} artifacts')
 
-    doc = []
-    doc.append(r'\input{catalog_styling.tex}')
-    doc.append('')
-    # Determine Gattung for title + running header
-    gs = escape_meta(artifacts[0]['gattung'] if artifacts else '')
-
-    # Override running header with actual Gattung value
-    doc.append('\\fancyhead[R]{\\small\\textit{' + gs + '}}')
-    doc.append('')
-
-    doc.append(r'\begin{document}')
-    doc.append('')
+    # One \rhead per Gattung group: the first artifact of each group sets it.
+    doc = [r'\input{catalog_styling.tex}', '', r'\begin{document}', '']
 
     # Title page
     doc.append(r'\thispagestyle{empty}')
@@ -431,16 +546,30 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
     doc.append(generate_toc_section(data))
     doc.append('')
 
+    # Figure index
+    figure_index = generate_figure_index(data, bilder_dir)
+    if figure_index:
+        doc.append(figure_index)
+        doc.append('')
+
     # Catalog
     doc.append(r'\pagestyle{fancy}')
     doc.append(r'\setcounter{page}{1}')
     doc.append('')
 
+    current_gattung = None
     for art in artifacts:
-        entry = generate_artifact_entry(art, bilder_dir, map_dir)
-        doc.append(entry)
-        lbl = art['katalognummer'].replace('.', '-')
-        doc.append(f'\\label{{art:{lbl}}}')
+        gattung = art.get('gattung', '')
+        if gattung != current_gattung:
+            current_gattung = gattung
+            header = escape_meta(gattung) or 'Ohne Gattung'
+            doc.append(
+                r'\fancyhead[R]{\small\textit{' + header + '}}'
+            )
+            doc.append('')
+        doc.append(generate_artifact_entry(art, bilder_dir, map_dir))
+        label = art['katalognummer'].replace('.', '-')
+        doc.append(f'\\label{{art:{label}}}')
         doc.append('')
 
     doc.append(r'\end{document}')
@@ -451,10 +580,16 @@ def generate_latex(data_path, output_path, bilder_dir, map_dir):
 
     print(f'[latex_generator] Written: {output_path} ({len(content)} chars)')
 
+    if UNKNOWN_UNICODE:
+        print('[latex_generator] WARNING: characters without LaTeX mapping:')
+        for ch, count in sorted(UNKNOWN_UNICODE.items()):
+            print(f'[latex_generator]   U+{ord(ch):04X} {ch!r} x{count}')
+    return UNKNOWN_UNICODE
+
 
 if __name__ == '__main__':
-    dp = sys.argv[1] if len(sys.argv) > 1 else '/opt/hermes/work/artifacts_data.json'
-    op = sys.argv[2] if len(sys.argv) > 2 else '/opt/hermes/work/latex_temp/catalog.tex'
-    bd = sys.argv[3] if len(sys.argv) > 3 else '/opt/hermes/work/bilder'
-    md = sys.argv[4] if len(sys.argv) > 4 else '/opt/hermes/work/latex_temp/maps'
+    dp = sys.argv[1] if len(sys.argv) > 1 else 'artifacts_data.json'
+    op = sys.argv[2] if len(sys.argv) > 2 else 'latex_temp/catalog.tex'
+    bd = sys.argv[3] if len(sys.argv) > 3 else 'bilder'
+    md = sys.argv[4] if len(sys.argv) > 4 else 'latex_temp/maps'
     generate_latex(dp, op, bd, md)

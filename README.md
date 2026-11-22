@@ -38,7 +38,7 @@ pip install -r requirements.txt
 ## Ordnerstruktur
 
 ```
-/opt/hermes/work/
+<projekt>/
 ├── artefakte_export.csv    ← Eingabedaten (CSV)
 ├── bilder/                  ← Bilddateien der Artefakte
 ├── src/                     ← Quellcode
@@ -46,12 +46,14 @@ pip install -r requirements.txt
 │   ├── map_generator.py
 │   ├── generate_latex.py
 │   ├── render_pdf.py
-│   ├── main.py
-│   └── requirements.txt
+│   └── main.py
 ├── latex_temp/              ← Temporäre LaTeX-Dateien
 │   ├── catalog_styling.tex  ← Layout/Styling
+│   ├── catalog.tex          ← Generiertes Dokument
 │   └── maps/                ← Generierte Standortkarten
-└── katalog_output.pdf       ← Finales PDF
+├── artifacts_data.json      ← Zwischendaten (generiert)
+├── katalog_output.pdf       ← Finales PDF
+└── requirements.txt
 ```
 
 ## Ausführung
@@ -59,41 +61,32 @@ pip install -r requirements.txt
 ### Komplettpipeline (empfohlen)
 
 ```bash
-cd /opt/hermes/work
 python3 src/main.py
 ```
 
-Das Skript führt alle vier Schritte nacheinander aus und erzeugt
-`katalog_output.pdf`.
+`main.py` ermittelt den Projektordner über seinen eigenen Pfad, du kannst es
+also aus jedem Verzeichnis starten. Es führt alle vier Schritte nacheinander
+aus und erzeugt `katalog_output.pdf`.
 
 ### Einzelschritte
 
-Falls du nur einen bestimmten Schritt wiederholen willst:
+Falls du nur einen bestimmten Schritt wiederholen willst (relative Pfade,
+vom Projektordner aus):
 
 ```bash
 # 1. CSV einlesen und strukturieren → artifacts_data.json
-python3 src/data_processor.py \
-  /opt/hermes/work/artefakte_export.csv \
-  /opt/hermes/work/artifacts_data.json
+python3 src/data_processor.py artefakte_export.csv artifacts_data.json
 
 # 2. Standortkarten generieren → latex_temp/maps/
-python3 src/map_generator.py \
-  /opt/hermes/work/artifacts_data.json \
-  /opt/hermes/work/latex_temp/maps \
-  /opt/hermes/work/bilder
+python3 src/map_generator.py artifacts_data.json latex_temp/maps bilder
 
 # 3. LaTeX-Dokument erzeugen → latex_temp/catalog.tex
 python3 src/generate_latex.py \
-  /opt/hermes/work/artifacts_data.json \
-  /opt/hermes/work/latex_temp/catalog.tex \
-  /opt/hermes/work/bilder \
-  /opt/hermes/work/latex_temp/maps
+  artifacts_data.json latex_temp/catalog.tex bilder latex_temp/maps
 
 # 4. PDF kompilieren → katalog_output.pdf
 python3 src/render_pdf.py \
-  /opt/hermes/work/latex_temp/catalog.tex \
-  /opt/hermes/work/katalog_output.pdf \
-  /opt/hermes/work/latex_temp
+  latex_temp/catalog.tex katalog_output.pdf latex_temp
 ```
 
 ## Pfade anpassen
@@ -110,19 +103,30 @@ Subobjektfeldern in `[Klammern]`):
 
 | Feld | Beschreibung |
 |---|---|
-| `Object ID`, `Name`, `ID` | Identifikation des Artefakts |
-| `Gattung`, `Objekttyp` | Klassifikation (für Sortierung und TOC) |
-| `Material`, `Grösse`, `Datierung`, `Kulturkreis` | Objektdaten |
+| `Object ID`, `Name` | Identifikation des Artefakts (Pflicht) |
+| `Materialgattung` (alt: `Gattung`) | Klassifikation (für Sortierung und TOC) |
+| `Objektgattung` (alt: `Objekttyp`) | Zweite Klassifikationsebene |
+| `Materialien` (alt: `Material`), `Grösse`, `Datierung`, `Kulturkreis` | Objektdaten |
 | `Künstler`, `Erhaltung` | Zusätzliche Metadaten |
-| `Beschreibung extern`, `Beschreibung durch MIE` | Beschreibungstexte |
-| `Katalog Fischer`, `Annotationen Kataloge` | Referenzen Auktionskatalog |
-| `Referenz in Literatur`, `Vergleiche` | Literaturangaben |
-| `Bild` | Dateiname des Bildes (im `bilder/`-Ordner) |
+| `Beschreibung Katalog Fischer`, `Beschreibung extern`, `Beschreibung durch MIE` | Beschreibungstexte |
+| `Lot-Nr. Katalog Fischer 1936` (alt: `Katalog Fischer`), `Anmerkungen` (alt: `Annotationen Kataloge`) | Referenzen Auktionskatalog |
+| `Referenz in Literatur`, `Vergleiche`, `Auktionen und Verkäufe` (alt: `Auktionen`) | Literatur- und Auktionsangaben |
+| `Provenienz`, `aktueller Standort`, `aktuelle Eigentümer:in` (alt: `Eigentümer`), `Status` | Bestand / Steckbrief |
+| `Inv. Nr. Archäologische Sammlung UZH`, `Platzierung in Haus` | Steckbrief |
+| `Bild`, `Bildreferenz`, `Bildquelle` | Bilder (`;`-getrennt), Bildbeschreibung, Bildherkunft |
 | `[Fundort] *` | Fundort-Subfelder (Geometrie, Name, Datum) |
 | `[in collection] *` | Sammlungs-Subfelder (Standort, Sammler, Zeitraum) |
 
+**Spalten umbenannt?** Alle Zugriffe laufen über `COLUMN_ALIASES` in
+[src/data_processor.py](src/data_processor.py). Genügt ein Eintrag dort, und
+der neue Export funktioniert wieder. Fehlt eine Pflichtspalte oder eine
+optionale Spalte ganz, meldet das Skript das beim Start mit Klartext.
+
 Mehrere Zeilen mit derselben `Object ID` werden automatisch zu einem
 Artefakt zusammengeführt (flache Datenstruktur für zeitliche Verläufe).
+
+Datumswerte dürfen `-∞` (unbekannter Anfang) und `∞` (andauernd) enthalten;
+beide werden zu Sortierschlüsseln und Anzeigetexten normalisiert.
 
 ## Katalognummerierung
 
@@ -132,6 +136,9 @@ Format: `<Gattung>.<Objekttyp>.<Laufnummer>` (z. B. `1.4.2`)
 - **Zweite Ziffer**: Position des Objekttyps innerhalb der Gattung
 - **Dritte Ziffer**: Laufende Nummer innerhalb des Objekttyps
 
+Ist `Objekttyp` bei einem Objekt leer (im aktuellen Export der Normalfall),
+landet es im Bucket `1` — die Nummer bleibt dadurch eindeutig.
+
 ## Fehlerbehandlung
 
 - **Fehlendes Bild** (Feld `Bild` belegt, Datei nicht vorhanden):
@@ -140,3 +147,23 @@ Format: `<Gattung>.<Objekttyp>.<Laufnummer>` (z. B. `1.4.2`)
 - **Abweichende Dateiendung** (z. B. `.jpg.jpg` statt `.jpg`):
   wird automatisch gefunden.
 - **Fehlende Geometrie-Daten**: keine Standortkarte für dieses Artefakt.
+- **Unbekannte Sonderzeichen**: werden, soweit möglich, nach LaTeX übersetzt
+  (`š` → `\v{s}`, `×` → `\times`, `∞` → `\infty`). Alles ohne Zuordnung wird
+  am Ende von Schritt 3 mit `U+XXXX` gemeldet, statt pdflatex abstürzen zu
+  lassen.
+
+## Bekannte Einschränkungen des aktuellen Exports
+
+Diese Punkte sind Datenlieferungen, nicht Code-Fehler:
+
+- **Tafel-Angaben fehlen**: `Katalog Fischer` enthielt früher Lot *und*
+  Tafelverweis (z. B. `210. Taf. 39`). Die neue Spalte
+  `Lot-Nr. Katalog Fischer 1936` enthält nur die Nummer und ist nur bei
+  wenigen Objekten gefüllt.
+- **Material (Stoff) fehlt**: Werte wie `Marmor, weiss` oder `Ton` sind im
+  neuen Export nicht mehr enthalten; `Materialien` ist nur bei wenigen
+  Objekten befüllt.
+- **Objekttyp praktisch leer**: `Objektgattung`/`Obergattung` sind nur bei
+  einem Bruchteil der Objekte gesetzt.
+- **Bilder**: `bilder/` enthält nur einen Teil der im CSV referenzierten
+  Dateien; der Rest wird als Platzhalter gerendert.
