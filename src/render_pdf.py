@@ -137,8 +137,6 @@ def render(tex_file, output_pdf_path, workdir=None):
     if not os.path.exists(styling_file):
         print(f"[render] WARNING: styling file not found at {styling_file}")
 
-    os.makedirs(os.path.join(tex_dir, 'maps'), exist_ok=True)
-
     success = run_pdflatex(tex_file, workdir, passes=2)
 
     if success:

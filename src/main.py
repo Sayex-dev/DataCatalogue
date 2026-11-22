@@ -4,9 +4,8 @@ Katalog Generator - Main orchestration script.
 
 Pipeline:
 1. data_processor.py  → reads CSV, produces structured JSON
-2. map_generator.py   → generates location maps
-3. generate_latex.py  → produces LaTeX files from JSON
-4. render_pdf.py      → compiles LaTeX to PDF
+2. generate_latex.py  → produces LaTeX files from JSON
+3. render_pdf.py      → compiles LaTeX to PDF
 
 Paths are resolved relative to the repository root, so the script can be
 started from anywhere.
@@ -27,15 +26,14 @@ def paths():
         'csv': os.path.join(root, 'artefakte_export.csv'),
         'data': os.path.join(root, 'artifacts_data.json'),
         'latex_dir': latex_dir,
-        'maps': os.path.join(latex_dir, 'maps'),
         'bilder': os.path.join(root, 'bilder'),
         'tex': os.path.join(latex_dir, 'catalog.tex'),
         'pdf': os.path.join(root, 'katalog_output.pdf'),
     }
 
 
-def run_step(label, script, args, timeout, fatal=True):
-    """Run one pipeline step and print its output."""
+def run_step(label, script, args, timeout):
+    """Run one pipeline step; abort the pipeline if it fails."""
     print(f'\n{label}')
     try:
         result = subprocess.run(
@@ -44,9 +42,7 @@ def run_step(label, script, args, timeout, fatal=True):
         )
     except subprocess.TimeoutExpired:
         print(f'ERROR: {os.path.basename(script)} timed out after {timeout}s')
-        if fatal:
-            sys.exit(1)
-        return False
+        sys.exit(1)
 
     if result.stdout:
         print(result.stdout.rstrip())
@@ -56,16 +52,12 @@ def run_step(label, script, args, timeout, fatal=True):
                  if l.strip() and 'File "' not in l and '  File ' not in l]
         for line in lines[-15:]:
             print(f'  {line.strip()}')
-        if fatal:
-            sys.exit(1)
-        return False
-    return True
+        sys.exit(1)
 
 
 def main():
     p = paths()
-    for directory in (p['latex_dir'], p['maps']):
-        os.makedirs(directory, exist_ok=True)
+    os.makedirs(p['latex_dir'], exist_ok=True)
 
     print('=' * 60)
     print('KATALOG GENERATOR')
@@ -76,24 +68,19 @@ def main():
         print(f'[main] ERROR: input CSV not found: {p["csv"]}')
         sys.exit(1)
 
-    run_step('[1/4] Processing CSV data...',
+    run_step('[1/3] Processing CSV data...',
              os.path.join(p['src'], 'data_processor.py'),
              [p['csv'], p['data']], timeout=60)
 
-    run_step('[2/4] Generating location maps '
-             '(may download cartopy data on first run)...',
-             os.path.join(p['src'], 'map_generator.py'),
-             [p['data'], p['maps'], p['bilder']], timeout=2400, fatal=False)
-
-    run_step('[3/4] Generating LaTeX document...',
+    run_step('[2/3] Generating LaTeX document...',
              os.path.join(p['src'], 'generate_latex.py'),
-             [p['data'], p['tex'], p['bilder'], p['maps']], timeout=120)
+             [p['data'], p['tex'], p['bilder']], timeout=120)
 
     if os.path.exists(p['tex']):
         print(f'[main] LaTeX file: {p["tex"]} '
               f'({os.path.getsize(p["tex"])} bytes)')
 
-    run_step('[4/4] Rendering PDF...',
+    run_step('[3/3] Rendering PDF...',
              os.path.join(p['src'], 'render_pdf.py'),
              [p['tex'], p['pdf'], p['latex_dir']], timeout=900)
 

@@ -11,28 +11,24 @@ Keine manuelle Installation von LaTeX oder Python-Abhängigkeiten nötig:
 docker compose up
 ```
 
-Beim ersten Start wird das Image gebaut (einmalig, ~1.5 GB) und Cartopy
-Natural-Earth-Daten werden heruntergeladen (~150 MB, persistiert im Volume).
+Beim ersten Start wird das Image gebaut (einmalig, ~1.5 GB).
 Danach liegt das PDF unter `katalog_output.pdf`.
 
 Falls Docker nicht installiert ist, folge der manuellen Installation unten.
 
 ## Voraussetzungen (manuelle Installation)
 
-- **Python 3.10+**
+- **Python 3.10+** (nur Standardbibliothek, keine externen Pakete)
 - **LaTeX** (TeX Live, mindestens `texlive-latex-recommended`,
-  `texlive-latex-extra`, `texlive-lang-german`, `texlive-fonts-recommended`)
-- **Python-Pakete** (siehe `requirements.txt`)
+  `texlive-latex-extra`, `texlive-lang-german`, `texlive-fonts-recommended`,
+  `tex-gyre`)
 
 ### Installation der Abhängigkeiten
 
 ```bash
 # LaTeX (Debian/Ubuntu)
 sudo apt-get install texlive-latex-recommended texlive-latex-extra \
-  texlive-lang-german texlive-fonts-recommended texlive-pictures
-
-# Python-Pakete
-pip install -r requirements.txt
+  texlive-lang-german texlive-fonts-recommended tex-gyre texlive-pictures
 ```
 
 ## Ordnerstruktur
@@ -43,14 +39,12 @@ pip install -r requirements.txt
 ├── bilder/                  ← Bilddateien der Artefakte
 ├── src/                     ← Quellcode
 │   ├── data_processor.py
-│   ├── map_generator.py
 │   ├── generate_latex.py
 │   ├── render_pdf.py
 │   └── main.py
 ├── latex_temp/              ← Temporäre LaTeX-Dateien
 │   ├── catalog_styling.tex  ← Layout/Styling
-│   ├── catalog.tex          ← Generiertes Dokument
-│   └── maps/                ← Generierte Standortkarten
+│   └── catalog.tex          ← Generiertes Dokument
 ├── artifacts_data.json      ← Zwischendaten (generiert)
 ├── katalog_output.pdf       ← Finales PDF
 └── requirements.txt
@@ -65,7 +59,7 @@ python3 src/main.py
 ```
 
 `main.py` ermittelt den Projektordner über seinen eigenen Pfad, du kannst es
-also aus jedem Verzeichnis starten. Es führt alle vier Schritte nacheinander
+also aus jedem Verzeichnis starten. Es führt alle drei Schritte nacheinander
 aus und erzeugt `katalog_output.pdf`.
 
 ### Einzelschritte
@@ -77,14 +71,11 @@ vom Projektordner aus):
 # 1. CSV einlesen und strukturieren → artifacts_data.json
 python3 src/data_processor.py artefakte_export.csv artifacts_data.json
 
-# 2. Standortkarten generieren → latex_temp/maps/
-python3 src/map_generator.py artifacts_data.json latex_temp/maps bilder
-
-# 3. LaTeX-Dokument erzeugen → latex_temp/catalog.tex
+# 2. LaTeX-Dokument erzeugen → latex_temp/catalog.tex
 python3 src/generate_latex.py \
-  artifacts_data.json latex_temp/catalog.tex bilder latex_temp/maps
+  artifacts_data.json latex_temp/catalog.tex bilder
 
-# 4. PDF kompilieren → katalog_output.pdf
+# 3. PDF kompilieren → katalog_output.pdf
 python3 src/render_pdf.py \
   latex_temp/catalog.tex katalog_output.pdf latex_temp
 ```
@@ -146,10 +137,10 @@ landet es im Bucket `1` — die Nummer bleibt dadurch eindeutig.
 - **Leeres Bildfeld**: Kein Bild, keine Meldung.
 - **Abweichende Dateiendung** (z. B. `.jpg.jpg` statt `.jpg`):
   wird automatisch gefunden.
-- **Fehlende Geometrie-Daten**: keine Standortkarte für dieses Artefakt.
+- **Fehlende Geometrie-Daten**: kein Standortverlauf für dieses Artefakt.
 - **Unbekannte Sonderzeichen**: werden, soweit möglich, nach LaTeX übersetzt
   (`š` → `\v{s}`, `×` → `\times`, `∞` → `\infty`). Alles ohne Zuordnung wird
-  am Ende von Schritt 3 mit `U+XXXX` gemeldet, statt pdflatex abstürzen zu
+  am Ende von Schritt 2 mit `U+XXXX` gemeldet, statt pdflatex abstürzen zu
   lassen.
 
 ## Bekannte Einschränkungen des aktuellen Exports

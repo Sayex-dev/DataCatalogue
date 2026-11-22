@@ -153,10 +153,13 @@
 }  
   
 % Separator line  
+% parfillskip is non-zero because of KOMA's parskip=half; without resetting it
+% the full-width rule overflows the column by ~12pt.
 \newcommand{\artifactsep}{%  
   \FloatBarrier%                                    % ADDED: Clear floats before separator
   \vspace{14pt}%                                    % INCREASED from 10pt
-  \noindent\rule{\textwidth}{0.3pt}%  
+  {\parfillskip=0pt\relax
+   \noindent\rule{\textwidth}{0.3pt}\par}%
   \vspace{14pt}%                                    % INCREASED from 10pt
 }  
   

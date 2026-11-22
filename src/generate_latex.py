@@ -194,50 +194,63 @@ def format_location_table(artifact):
     if not locations:
         return ''
 
-    rows = []
+    rows_data = []
+    has_ort = False
     for loc in locations:
-        label = escape_meta(loc.get('label', ''))
-        ort = escape_meta(loc.get('ort', ''))
-        ds = fmt_date(loc.get('date_start', ''))
-        de = fmt_date(loc.get('date_end', ''))
+        # For the Fundort the label already is the place name.
+        ort = '' if loc.get('is_fundort') else escape_meta(loc.get('ort', ''))
+        if ort:
+            has_ort = True
+        rows_data.append({
+            'label': escape_meta(loc.get('label', '')),
+            'ort': ort,
+            'start': fmt_date(loc.get('date_start', '')),
+            'end': fmt_date(loc.get('date_end', '')),
+            'sammler': escape_meta(loc.get('sammler', '')),
+            'is_fundort': bool(loc.get('is_fundort')),
+        })
 
-        # Date range with fixed-width left box → all dashes aligned
-        if ds and de:
-            date_str = f'\\makebox[3cm][r]{{{ds}}} -- {de}'
-        elif ds:
-            date_str = f'\\makebox[3cm][r]{{{ds}}} --'
-        elif de:
-            date_str = f'\\makebox[3cm][r]{{}} -- {de}'
+    if not rows_data:
+        return ''
+
+    rows = []
+    for item in rows_data:
+        if not item['start'] and not item['end']:
+            date_cells = r'\multicolumn{2}{@{}l}{unbekannt}'
         else:
-            date_str = 'unbekannt'
+            date_cells = f"{item['start']} & {item['end']}"
+        sammler = item['sammler'] if (item['sammler'] and not item['is_fundort']) else ''
 
-        sammler = escape_meta(loc.get('sammler', ''))
-        ort_cell = ort if ort else r'\hspace{0pt}'
-
-        row = f'{label} & {date_str} & {ort_cell}'
-        if sammler and not loc.get('is_fundort'):
-            row += f' & {sammler}'
-        else:
-            row += r' & \hspace{0pt}'
+        row = f"{item['label']} & {date_cells}"
+        if has_ort:
+            row += ' & ' + (item['ort'] or '')
+        row += ' & ' + (sammler or '')
         row += r' \\'
         rows.append(row)
 
-    if not rows:
-        return ''
+    # Column widths add up to <= 16cm (A4 minus 2 x 2.5cm margins).
+    if has_ort:
+        spec = (r'@{}>{\raggedright\arraybackslash}p{4.4cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.2cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.2cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.4cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.0cm}@{}')
+        header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
+                  r'& \textbf{Ort} & \textbf{Sammler} \\')
+    else:
+        spec = (r'@{}>{\raggedright\arraybackslash}p{5.4cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{4.0cm}@{}')
+        header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
+                  r'& \textbf{Sammler} \\')
 
-    header = (
-        r'\textbf{Sammlung} & \multicolumn{1}{c}{\textbf{Zeitraum}} '
-        r'& \textbf{Ort} & \textbf{Sammler} \\'
-    )
     lines = [
         r'\vspace{8pt}',
         r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{@{}>{\raggedright\arraybackslash}p{4.4cm}'
-        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}'
-        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}'
-        r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.1cm}@{}}',
+        r'\begin{longtable}{' + spec + '}',
         r'\toprule',
         header,
         r'\midrule',
@@ -299,7 +312,8 @@ def format_image_block(artifact, bilder_dir):
                    .replace('%', r'\%').replace('#', r'\#'))
             lines.append(
                 r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}'
-                r'\fbox{\parbox{\linewidth}{\centering Bild nicht verfügbar:\\ '
+                r'\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}'
+                r'{\centering Bild nicht verfügbar:\\ '
                 r'\texttt{' + esc + r'}}}\par}'
             )
 
@@ -409,7 +423,6 @@ def generate_artifact_entry(artifact, bilder_dir):
     # Chronological location history (table only, no map)
     table = format_location_table(artifact)
     if table:
-        lines.append(r'\vspace{12pt}')
         lines.append(table)
         lines.append('')
 
@@ -567,7 +580,7 @@ def generate_latex(data_path, output_path, bilder_dir):
                 r'\fancyhead[R]{\small\textit{' + header + '}}'
             )
             doc.append('')
-        doc.append(generate_artifact_entry(art, bilder_dir, map_dir))
+        doc.append(generate_artifact_entry(art, bilder_dir))
         label = art['katalognummer'].replace('.', '-')
         doc.append(f'\\label{{art:{label}}}')
         doc.append('')
@@ -591,5 +604,4 @@ if __name__ == '__main__':
     dp = sys.argv[1] if len(sys.argv) > 1 else 'artifacts_data.json'
     op = sys.argv[2] if len(sys.argv) > 2 else 'latex_temp/catalog.tex'
     bd = sys.argv[3] if len(sys.argv) > 3 else 'bilder'
-    md = sys.argv[4] if len(sys.argv) > 4 else 'latex_temp/maps'
-    generate_latex(dp, op, bd, md)
+    generate_latex(dp, op, bd)

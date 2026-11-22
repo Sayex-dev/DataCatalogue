@@ -22,5 +22,5 @@ RUN python3 -m venv /opt/venv && \
 
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Run the full pipeline (CSV → JSON → maps → LaTeX → PDF)
+# Run the full pipeline (CSV → JSON → LaTeX → PDF)
 ENTRYPOINT ["python3", "src/main.py"]
