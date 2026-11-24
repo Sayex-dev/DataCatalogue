@@ -301,12 +301,11 @@ def format_location_table(artifact):
     lines = [
         r'\begin{samepage}',
         r'\vspace{6pt}',
-        r'{\fontsize{10pt}{13pt}\selectfont\color{refgray}',
+        r'{\fontsize{11pt}{13.5pt}\selectfont\color{refgray}',
         r'\textsc{Standortverlauf (chronologisch)}\\',
         r'\vspace{3pt}',
         r'\rowcolors{2}{zebra}{white}',
         r'\begin{tabular}{' + spec + '}',
-        r'\toprule',
         r'\rowcolor{white}',
         header,
         r'\midrule',
