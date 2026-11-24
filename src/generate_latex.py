@@ -181,7 +181,7 @@ def format_entry_fields(artifact):
         ('Künstler', clean(artifact.get('kuenstler'))),
         ('Erhaltung', clean(artifact.get('erhaltung'))),
         ('Dekor', clean(artifact.get('dekor'))),
-        ('ID Auktion', clean(artifact.get('katalog_fischer'))),
+        ('Auktion 1936, Lot-Nr.', clean(artifact.get('katalog_fischer'))),
         ('ID UZH', clean(artifact.get('inv_nr_uzh'))),
         ('Platzierung im Haus', clean(artifact.get('platzierung_haus'))),
     ]
@@ -189,7 +189,12 @@ def format_entry_fields(artifact):
 
 
 def format_location_table(artifact):
-    """Generate longtable of chronological location history."""
+    """
+    Chronological location history as a fixed-width tabular.
+
+    A tabular (not longtable) keeps the whole table on one page, which lets
+    the entry's height be measured; at most 7 rows this always fits.
+    """
     locations = artifact.get('all_locations', [])
     if not locations:
         return ''
@@ -230,55 +235,51 @@ def format_location_table(artifact):
 
     # Column widths add up to <= 16cm (A4 minus 2 x 2.5cm margins).
     if has_ort:
-        spec = (r'@{}>{\raggedright\arraybackslash}p{4.4cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.2cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.2cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.4cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{3.0cm}@{}')
+        spec = (r'@{}>{\raggedright\arraybackslash}p{3.9cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.0cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.0cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.9cm}@{}')
         header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
                   r'& \textbf{Ort} & \textbf{Sammler} \\')
     else:
-        spec = (r'@{}>{\raggedright\arraybackslash}p{5.4cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
-                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
+        spec = (r'@{}>{\raggedright\arraybackslash}p{5.0cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
+                r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{4.0cm}@{}')
         header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
                   r'& \textbf{Sammler} \\')
 
     lines = [
-        r'\vspace{8pt}',
-        r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}',
+        r'\begin{samepage}',
+        r'\vspace{4pt}',
+        r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}',
         r'\textbf{Standortverlauf (chronologisch)}\\',
         r'\vspace{2pt}',
-        r'\begin{longtable}{' + spec + '}',
+        r'\begin{tabular}{' + spec + '}',
         r'\toprule',
         header,
         r'\midrule',
-        r'\endfirsthead',
-        r'\toprule',
-        header,
-        r'\midrule',
-        r'\endhead',
     ]
     lines.extend(rows)
     lines.extend([
         r'\bottomrule',
-        r'\end{longtable}',
+        r'\end{tabular}',
         r'}',
+        r'\end{samepage}',
     ])
     return '\n'.join(lines)
 
 
 def image_entries(artifact, bilder_dir):
     """
-    One entry per image declared in the export, in export order.
+    One entry per image declared in Bildreferenz, in export order.
 
     Returns dicts with index, declared name, found path (or None), caption
-    and source. Keeping a single list keeps figure numbers, captions and the
-    Abbildungsverzeichnis in sync even when a file is missing.
+    and Abbildungsnachweis.
     """
-    captions = split_references(artifact.get('bildreferenz'))
-    sources = split_references(artifact.get('bildquelle'))
+    captions = split_references(artifact.get('bildbeschreibung'))
+    proofs = split_references(artifact.get('abbildungsnachweis'))
 
     entries = []
     for index, name in enumerate(artifact.get('images', [])):
@@ -287,17 +288,42 @@ def image_entries(artifact, bilder_dir):
             'name': name,
             'path': find_image_file(name, bilder_dir),
             'caption': captions[index] if index < len(captions) else '',
-            'source': sources[index] if index < len(sources) else '',
+            'proof': proofs[index] if index < len(proofs) else '',
         })
     return entries
+
+
+def placeholder_box(label):
+    """Grey box shown when a figure file is missing."""
+    esc = (label.replace('_', r'\_').replace('&', r'\&')
+           .replace('%', r'\%').replace('#', r'\#'))
+    content = r'\centering Bild nicht verfügbar'
+    if esc:
+        # Long file names must be allowed to break at any character.
+        content += r'\\ \texttt{\small ' + r'\allowbreak{}'.join(esc) + '}'
+    return (
+        r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}'
+        r'\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{'
+        + content + r'}}\par}'
+    )
 
 
 def format_image_block(artifact, bilder_dir):
     """Figures with their caption directly below the image."""
     lines = []
-    label_base = artifact['katalognummer'].replace('.', '-')
+    entries = image_entries(artifact, bilder_dir)
 
-    for entry in image_entries(artifact, bilder_dir):
+    if not entries:
+        # The export has no Bildreferenz for this object yet.
+        lines.append(r'\begin{samepage}')
+        lines.append(r'\begin{center}')
+        lines.append(placeholder_box(''))
+        lines.append(r'\end{center}')
+        lines.append(r'\end{samepage}')
+        lines.append(r'\vspace{10pt}')
+        return '\n'.join(lines)
+
+    for entry in entries:
         number = entry['index'] + 1
         lines.append(r'\begin{samepage}')
         lines.append(r'\begin{center}')
@@ -308,28 +334,20 @@ def format_image_block(artifact, bilder_dir):
                 f'keepaspectratio]{{../bilder/{os.path.basename(entry["path"])}}}'
             )
         else:
-            esc = (entry['name'].replace('_', r'\_').replace('&', r'\&')
-                   .replace('%', r'\%').replace('#', r'\#'))
-            lines.append(
-                r'{\fontsize{9pt}{11pt}\selectfont\color{metagray}'
-                r'\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}'
-                r'{\centering Bild nicht verfügbar:\\ '
-                r'\texttt{' + esc + r'}}}\par}'
-            )
+            lines.append(placeholder_box(entry['name']))
 
         if entry['caption']:
             lines.append(r'\par\vspace{4pt}')
             lines.append(
-                r'{\footnotesize\itshape '
+                r'{\fontsize{11pt}{13.5pt}\selectfont\itshape '
                 + escape_meta(f'Abb. {number}: {entry["caption"]}') + r'\par}'
             )
-        if entry['source']:
+        if entry['proof']:
             lines.append(
-                r'{\fontsize{8pt}{10pt}\selectfont\color{metagray}'
-                + escape_meta(f'Quelle: {entry["source"]}') + r'\par}'
+                r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}'
+                + escape_meta(entry['proof']) + r'\par}'
             )
 
-        lines.append(f'\\label{{art:{label_base}-img{number}}}')
         lines.append(r'\end{center}')
         lines.append(r'\end{samepage}')
         lines.append(r'\vspace{10pt}')
@@ -337,29 +355,30 @@ def format_image_block(artifact, bilder_dir):
     return '\n'.join(lines)
 
 
-def generate_artifact_entry(artifact, bilder_dir):
-    """Generate LaTeX for one artifact with minipage layout."""
-    lines = []
+
+def generate_artifact_entry(artifact, bilder_dir, chapter='',
+                           first_in_chapter=False, last_in_chapter=False,
+                           label=''):
+    """
+    Generate LaTeX for one artifact.
+
+    The entry is measured first and only moved to the next page when it would
+    otherwise be split; entries taller than a page are allowed to break.
+    """
     kn = artifact['katalognummer']
     artifact_name = escape_meta(artifact['name'])
     title = (f'{{\\fontsize{{17pt}}{{21pt}}\\selectfont\\color{{metagray}}'
              f'{kn}}} {artifact_name}')
+    obergattung = escape_meta(artifact.get('obergattung', ''))
+    chapter_mark = escape_meta(chapter)
 
-    lines.append('')
-    lines.append(r'\newpage')
-    lines.append(r'\FloatBarrier')
-    lines.append('')
-    lines.append('%' + '-' * 60)
-    lines.append(f'% Katalog-Nr. {kn}: {artifact["name"][:60]}')
-    lines.append('%' + '-' * 60)
-    lines.append('')
-
-    lines.append(f'\\artifacttitle{{{title}}}')
-    lines.append('')
-    lines.append(r'\vspace{4pt}')
+    # Body of the entry, kept as a unit so its height can be measured.
+    body = []
+    body.append(f'\\artifacttitle{{{title}}}')
+    body.append(r'\vspace{4pt}')
 
     # Left column: metadata + descriptions
-    left_content = []
+    left_content = [r'{\parskip=0pt\relax']
     fields = format_entry_fields(artifact)
     if fields:
         left_content.append(r'\metablock{')
@@ -378,7 +397,7 @@ def generate_artifact_entry(artifact, bilder_dir):
             left_content.append('')
             left_content.append(r'\medskip')
             left_content.append(
-                r'{\footnotesize\bfseries Anmerkungen:} '
+                r'{\fontsize{11pt}{13.5pt}\selectfont\bfseries Anmerkungen:} '
                 + escape_meta(artifact['annotationen'])
             )
         left_content.append(r'\end{quotebox}')
@@ -390,100 +409,113 @@ def generate_artifact_entry(artifact, bilder_dir):
         )
         left_content.append('')
 
+    reference_lines = []
     if artifact.get('provenienz'):
-        left_content.append(
+        reference_lines.append(
             f'\\referencetext{{Provenienz: {escape_meta(artifact["provenienz"])}}}'
         )
     if artifact.get('referenz_literatur'):
-        left_content.append(
+        reference_lines.append(
             f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}'
         )
     if artifact.get('vergleiche'):
-        left_content.append(
+        reference_lines.append(
             f'\\referencetext{{Vergleiche: '
             f'{escape_meta(artifact["vergleiche"])}}}'
         )
     if artifact.get('auktionen'):
-        left_content.append(
+        reference_lines.append(
             f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}'
         )
 
-    right_str = format_image_block(artifact, bilder_dir)
+    if reference_lines:
+        # parskip=half would add a half line between each reference; the block
+        # should read as one compact list instead.
+        left_content.append(r'{\parskip=0pt\relax')
+        left_content.extend(reference_lines)
+        left_content.append(r'\par}')
 
-    lines.append(r'\columnratio{0.55}')
-    lines.append(r'\begin{paracol}{2}')
-    lines.append('\n'.join(left_content))
-    lines.append('')
-    lines.append(r'\switchcolumn')
-    lines.append(r'\vspace{0pt}')
-    lines.append(right_str)
-    lines.append(r'\end{paracol}')
-    lines.append('')
+    # Close the compact-spacing group opened at the top of the column.
+    left_content.append(r'}')
 
-    # Chronological location history (table only, no map)
+    image_block = format_image_block(artifact, bilder_dir)
+    body.extend([
+        r'\noindent',
+        r'\begin{minipage}[t]{0.55\textwidth}',
+        '\n'.join(left_content),
+        r'\end{minipage}',
+    ])
+    if image_block:
+        body.extend([
+            r'\hfill',
+            r'\begin{minipage}[t]{0.42\textwidth}',
+            r'\vspace{0pt}',
+            image_block,
+            r'\end{minipage}',
+        ])
+
     table = format_location_table(artifact)
     if table:
-        lines.append(table)
-        lines.append('')
+        body.append('')
+        body.append(table)
 
-    lines.append(r'\artifactsep')
+    lines = []
     lines.append('')
-    return '\n'.join(lines)
+    lines.append(r'\markboth{' + chapter_mark + '}{' + (obergattung or '') + '}')
+    lines.append(r'\FloatBarrier')
+    lines.append('')
+    lines.append('%' + '-' * 60)
+    lines.append(f'% Katalog-Nr. {kn}: {artifact["name"][:60]}')
+    lines.append('%' + '-' * 60)
+    lines.append('')
 
+    # The label goes inside the measured box: a \write is only executed when
+    # the box is contributed to a page, so \pageref points at the page the
+    # entry actually lands on, even when TeX moves it to the next page.
+    if label:
+        body.insert(0, f'\\label{{art:{label}}}')
 
-def generate_figure_index(data, bilder_dir):
-    """Abbildungsverzeichnis: artifact, then one line per figure."""
-    entries = []
-    for artifact in data.get('artifacts', []):
-        images = image_entries(artifact, bilder_dir)
-        if images:
-            entries.append((artifact, images))
+    # Measure the entry and start a new page only when it would be split. The
+    # first entry of a chapter always stays on its chapter page; entries taller
+    # than a page are allowed to break.
+    lines.append(r'\begingroup')
+    lines.append(r'\setbox0=\vbox{%')
+    lines.extend(body)
+    lines.append(r'}')
 
-    if not entries:
-        return ''
-
-    lines = [
-        '',
-        r'\begingroup',
-        r'\setlength{\parindent}{0pt}',
-        r'\begin{center}',
-        r'{\fontsize{22pt}{28pt}\selectfont\bfseries Abbildungsverzeichnis}',
-        r'\par\vspace{4pt}',
-        r'\rule{0.6\textwidth}{0.6pt}',
-        r'\end{center}',
-        r'\vspace{20pt}',
-    ]
-    for artifact, images in entries:
-        kn = artifact['katalognummer']
-        label = kn.replace('.', '-')
-        lines.append('')
-        lines.append(r'\vspace{8pt}')
+    if not first_in_chapter:
+        lines.append(r'\ifdim\ht0<\textheight')
         lines.append(
-            r'{\fontsize{11pt}{14pt}\selectfont\bfseries '
-            f'{kn}\\quad {escape_meta(artifact["name"])}\\par}}'
-        )
-        lines.append(r'\vspace{3pt}')
-        for entry in images:
-            number = entry['index'] + 1
-            text = entry['source'] or entry['caption']
-            lines.append(
-                r'\noindent\hspace*{1.5em}{\fontsize{10pt}{13pt}'
-                r'\selectfont '
-                + escape_meta(f'Abb. {number}')
-                + (r': ' + escape_meta(text) if text else '')
-                + r'\dotfill\ '
-                + f'\\pageref{{art:{label}-img{number}}}'
-                + r'\par}'
-            )
-            lines.append(r'\vspace{2pt}')
-    lines.append(r'\vspace{16pt}')
-    lines.append(r'\endgroup')
-    lines.append(r'\newpage')
+            r'  \ifdim\ht0>\dimexpr\pagegoal-\pagetotal+1pt\relax')
+        lines.append(r'    \clearpage')
+        lines.append(r'  \fi')
+        lines.append(r'\fi')
+
+    # The vertical gap belongs after the page break: emitted before it, it
+    # would be the only content of the page it is pushed onto. The first entry
+    # of a chapter already follows the chapter heading, so it needs no gap.
+    if not first_in_chapter:
+        lines.append(r'\vspace{16pt}')
+    # parfillskip is non-zero here because of KOMA's parskip=half, which would
+    # make the box paragraph 10.95pt too wide.
+    lines.append(r'\vbox{\box0}\endgroup')
+    lines.append('')
+
+    # The separator is only emitted when there is still room for it on the
+    # page. Otherwise it would be pushed alone onto the next page and leave a
+    # nearly empty page behind. It is also omitted after the last entry of a
+    # chapter, where the chapter's \newpage follows anyway.
+    if not last_in_chapter:
+        lines.append(r'\ifdim\dimexpr\pagegoal-\pagetotal\relax>40pt\relax')
+        lines.append(r'  \artifactsep')
+        lines.append(r'\fi')
+        lines.append('')
     return '\n'.join(lines)
+
 
 
 def generate_toc_section(data):
-    """Generate TOC by Gattung — one artifact per row."""
+    """Generate TOC: chapter per Materialgattung, one row per artifact."""
     toc = data.get('toc', {})
     if not toc:
         return ''
@@ -499,8 +531,8 @@ def generate_toc_section(data):
     lines.append(r'\end{center}')
     lines.append(r'\vspace{20pt}')
 
-    for gattung, objektypen in toc.items():
-        heading = escape_meta(gattung) or 'Ohne Gattung'
+    for chapter, artifacts in toc.items():
+        heading = escape_meta(chapter)
         lines.append('')
         lines.append(r'\vspace{8pt}')
         lines.append(
@@ -508,20 +540,19 @@ def generate_toc_section(data):
             f'{heading}\\par}}'
         )
         lines.append(r'\vspace{8pt}')
-        for artifacts in objektypen.values():
-            for a in artifacts:
-                kn = a['katalognummer']
-                nm = escape_meta(a['name'])
-                lbl = f"art:{kn.replace('.', '-')}"
-                lines.append(
-                    r'\noindent{\fontsize{11pt}{14pt}\selectfont'
-                    r'\hspace*{1.5em}'
-                    f'{kn}\\quad {nm}'
-                    r'\dotfill\ '
-                    f'\\pageref{{{lbl}}}'
-                    r'\par}'
-                )
-                lines.append(r'\vspace{4pt}')
+        for a in artifacts:
+            kn = a['katalognummer']
+            nm = escape_meta(a['name'])
+            lbl = f"art:{a['katalog_id'].replace('.', '-').replace(' ', '-')}"
+            lines.append(
+                r'\noindent{\fontsize{11pt}{13.5pt}\selectfont'
+                r'\hspace*{1.5em}'
+                f'{kn}\\quad {nm}'
+                r'\dotfill\ '
+                f'\\pageref{{{lbl}}}'
+                r'\par}'
+            )
+            lines.append(r'\vspace{4pt}')
         lines.append(r'\vspace{2pt}')
 
     lines.append(r'\vspace{16pt}')
@@ -559,30 +590,41 @@ def generate_latex(data_path, output_path, bilder_dir):
     doc.append(generate_toc_section(data))
     doc.append('')
 
-    # Figure index
-    figure_index = generate_figure_index(data, bilder_dir)
-    if figure_index:
-        doc.append(figure_index)
-        doc.append('')
-
     # Catalog
     doc.append(r'\pagestyle{fancy}')
     doc.append(r'\setcounter{page}{1}')
     doc.append('')
 
-    current_gattung = None
-    for art in artifacts:
-        gattung = art.get('gattung', '')
-        if gattung != current_gattung:
-            current_gattung = gattung
-            header = escape_meta(gattung) or 'Ohne Gattung'
-            doc.append(
-                r'\fancyhead[R]{\small\textit{' + header + '}}'
-            )
+    # Each chapter (Materialgattung) starts on a new page; artifacts flow
+    # within the chapter so short entries do not waste a page.
+    current_chapter = None
+    first_in_chapter = False
+    chapters = [a.get('gattung') or 'Ohne Materialgattung' for a in artifacts]
+    for index, art in enumerate(artifacts):
+        chapter = chapters[index]
+        last_in_chapter = (index + 1 == len(artifacts)
+                           or chapters[index + 1] != chapter)
+        if chapter != current_chapter:
+            current_chapter = chapter
+            first_in_chapter = True
+            doc.append(r'\newpage')
+            doc.append(r'\FloatBarrier')
+            doc.append(r'\markboth{' + escape_meta(chapter) + '}{}')
             doc.append('')
-        doc.append(generate_artifact_entry(art, bilder_dir))
-        label = art['katalognummer'].replace('.', '-')
-        doc.append(f'\\label{{art:{label}}}')
+            doc.append(
+                r'{\fontsize{20pt}{24pt}\selectfont\bfseries '
+                + escape_meta(chapter) + r'\par}'
+            )
+            doc.append(r'\vspace{2pt}')
+            doc.append(r'\noindent\rule{\textwidth}{0.6pt}')
+            doc.append(r'\vspace{10pt}')
+            doc.append('')
+
+        label = art['katalog_id'].replace('.', '-').replace(' ', '-')
+        doc.append(generate_artifact_entry(art, bilder_dir, chapter,
+                                          first_in_chapter, last_in_chapter,
+                                          label))
+        first_in_chapter = False
         doc.append('')
 
     doc.append(r'\end{document}')

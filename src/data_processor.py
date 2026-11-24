@@ -36,7 +36,7 @@ COLUMN_ALIASES = {
     'beschreibung_fischer': ('Beschreibung Katalog Fischer',),
     'beschreibung_extern': ('Beschreibung extern',),
     'beschreibung_mie': ('Beschreibung durch MIE',),
-    'katalog_fischer': ('Katalog Fischer', 'Lot-Nr. Katalog Fischer 1936'),
+    'katalog_fischer': ('Lot-Nr. Katalog Fischer 1936', 'Katalog Fischer'),
     'annotationen': ('Annotationen Kataloge', 'Anmerkungen'),
     'referenz_literatur': ('Referenz in Literatur',),
     'vergleiche': ('Vergleiche',),
@@ -50,7 +50,8 @@ COLUMN_ALIASES = {
     'platzierung_haus': ('Platzierung in Haus',),
     'bild': ('Bild',),
     'bildreferenz': ('Bildreferenz',),
-    'bildquelle': ('Bildquelle',),
+    'bildbeschreibung': ('Bildbeschreibung',),
+    'abbildungsnachweis': ('Abbildungsnachweis', 'Bildquelle'),
     'fundort_date_start': ('[Fundort] Date Start',),
     'fundort_date_end': ('[Fundort] Date End',),
     'fundort_location_reference': ('[Fundort] Location Reference',),
@@ -134,7 +135,6 @@ def validate_columns(fieldnames):
 
 
 def normalize_date(date_str):
-    """Normalize a date string for sorting. Returns (sortable, display)."""
     text = (date_str or '').strip()
     if not text:
         return (None, None)
@@ -178,6 +178,37 @@ def clean_name(raw_name, katalognummer='', objektname=''):
     return cleaned.strip() or name
 
 
+KATALOGNUMMER_RE = re.compile(
+    r'^L?\s?(\d+)\s*([a-c](?=[\s-]|$))?\s*(?:-\s*[a-c])?\s*(.*)$'
+)
+
+
+def parse_katalognummer(raw):
+    """
+    Split the export's Katalognummer into (number, suffix, caption).
+
+    Only the numeric part drives the order; any trailing text in the column is
+    an artefact name left over from an older export and is ignored.
+    "11b L 1099 attische rotfigurige Hydria" -> (11, 'b', '')
+    """
+    text = (raw or '').strip()
+    match = KATALOGNUMMER_RE.match(text)
+    if not match:
+        return (None, '', text)
+    return (int(match.group(1)), match.group(2) or '', '')
+
+
+def format_katalognummer(number, suffix):
+    """Display form of the catalogue number, e.g. 11b or 274."""
+    if number is None:
+        return ''
+    return f'{number}{suffix}'
+
+
+def chapter_order_key(gattung):
+    """Sort chapters by Materialgattung; unassigned objects go last."""
+    return (1, '') if not gattung else (0, gattung.lower())
+
 
 
 def group_artifacts(rows):
@@ -208,15 +239,29 @@ def group_artifacts(rows):
             get_field(r0, 'katalognummer_raw'),
             get_field(r0, 'objektname'),
         )
-        for key in ('gattung', 'objekttyp', 'obergattung', 'material',                    'groesse', 'datierung', 'kulturkreis', 'kuenstler',
+        raw_number = get_field(r0, 'katalognummer_raw')
+        number, suffix, _ = parse_katalognummer(raw_number)
+        artifact['kat_nummer'] = number
+        artifact['kat_suffix'] = suffix
+        artifact['katalognummer'] = format_katalognummer(number, suffix)
+        for key in ('gattung', 'objekttyp', 'obergattung', 'material',
+                    'groesse', 'datierung', 'kulturkreis', 'kuenstler',
                     'erhaltung', 'beschreibung_fischer',
                     'beschreibung_extern', 'beschreibung_mie',
                     'katalog_fischer', 'annotationen', 'referenz_literatur',
                     'vergleiche', 'weitere_info_fundort', 'auktionen',
                     'provenienz', 'aktueller_standort', 'eigentuemer',
                     'status', 'inv_nr_uzh', 'platzierung_haus',
-                    'bildreferenz', 'bildquelle'):
+                    'bildreferenz', 'bildbeschreibung',
+                    'abbildungsnachweis'):
             artifact[key] = get_field(r0, key)
+
+        # Catalog numbers are only unique per chapter, so the label key keeps
+        # the chapter as well.
+        artifact['katalog_id'] = (
+            f"{artifact['gattung'] or 'Ohne Materialgattung'}-{number}{suffix}"
+            if number is not None else oid
+        )
 
         artifact['fundort'] = {
             'date_start': get_field(r0, 'fundort_date_start'),
@@ -227,14 +272,16 @@ def group_artifacts(rows):
             'finder': get_field(r0, 'fundort_finder'),
         }
 
-        # Unique images (deduplicated, order preserved)
+        # Image file names come from Bildreferenz (";"-separated). The legacy
+        # Bild column only holds opaque hash names and is no longer used.
         images = []
         seen = set()
         for row in group_rows:
-            img = get_field(row, 'bild')
-            if img and img not in seen:
-                seen.add(img)
-                images.append(img)
+            for ref in get_field(row, 'bildreferenz').split(';'):
+                name = ref.strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    images.append(name)
         artifact['images'] = images
 
         # Collection history (unique combinations, chronologically sorted)
@@ -369,71 +416,46 @@ def extract_all_coordinates(geom):
 
 
 
-def assign_catalog_numbers(artifacts):
+def order_artifacts(artifacts):
     """
-    Assign catalog numbers in format: Gattung_Nr.Objekttyp_Nr.Laufend_Nr
+    Order the catalog: chapters by Materialgattung, within a chapter by the
+    catalogue number taken from the export.
 
-    First level: sorted by Gattung alphabetically
-    Second level: within each Gattung, sorted by Objekttyp alphabetically
-    Third level: within each Objekttyp, running number
-
-    Objekttyp is empty for most objects in current exports; those share the
-    "1" bucket, which keeps the numbering unique and stable.
+    The catalogue number is the authoritative order. Numbers with a letter
+    suffix keep their position (4a before 4b) and stay unique.
     """
-    artifacts.sort(key=lambda a: (a['gattung'].lower(),
-                                  a['objekttyp'].lower(),
-                                  a['name'].lower()))
-
-    gattung_order = {}
-    objekttyp_order = {}
-    gattung_counter = 0
-    current_gattung = None
-    current_objekttyp = None
-    objekttyp_counter = 0
-
-    for artifact in artifacts:
-        g = artifact['gattung']
-        o = artifact['objekttyp']
-
-        if g not in gattung_order:
-            gattung_counter += 1
-            gattung_order[g] = gattung_counter
-            objekttyp_order[(g, o)] = 1
-            current_gattung = g
-            current_objekttyp = o
-            objekttyp_counter = 1
-        elif o != current_objekttyp or g != current_gattung:
-            objekttyp_counter += 1
-            objekttyp_order[(g, o)] = objekttyp_counter
-            current_objekttyp = o
-
-    running = defaultdict(int)
-    for artifact in artifacts:
-        g = artifact['gattung']
-        o = artifact['objekttyp']
-        running[(g, o)] += 1
-        artifact['katalognummer'] = (
-            f"{gattung_order[g]}.{objekttyp_order[(g, o)]}.{running[(g, o)]}"
-        )
-
+    artifacts.sort(key=lambda a: (
+        chapter_order_key(a['gattung']),
+        a['kat_nummer'] if a['kat_nummer'] is not None else 10 ** 9,
+        a['kat_suffix'],
+        a['name'].lower(),
+    ))
     return artifacts
 
 
 def build_toc(artifacts):
-    """Build table of contents structure."""
+    """Table of contents keyed by chapter (Materialgattung)."""
     toc = OrderedDict()
-    for a in artifacts:
-        g = a['gattung']
-        o = a['objekttyp']
-        if g not in toc:
-            toc[g] = OrderedDict()
-        if o not in toc[g]:
-            toc[g][o] = []
-        toc[g][o].append({
-            'katalognummer': a['katalognummer'],
-            'name': a['name'],
+    for artifact in artifacts:
+        chapter = artifact['gattung'] or 'Ohne Materialgattung'
+        toc.setdefault(chapter, []).append({
+            'katalognummer': artifact['katalognummer'],
+            'katalog_id': artifact['katalog_id'],
+            'name': artifact['name'],
         })
     return toc
+
+
+def build_chapters(artifacts):
+    """Group artifacts into chapters while preserving the catalog order."""
+    chapters = OrderedDict()
+    for artifact in artifacts:
+        title = artifact['gattung'] or 'Ohne Materialgattung'
+        chapters.setdefault(title, []).append(artifact)
+    return [
+        {'title': title, 'count': len(items), 'artifacts': items}
+        for title, items in chapters.items()
+    ]
 
 
 def process(input_path, output_path):
@@ -455,26 +477,33 @@ def process(input_path, output_path):
     artifacts = group_artifacts(rows)
     print(f'[data_processor]   {len(artifacts)} unique artifacts identified')
 
-    print('[data_processor] Assigning catalog numbers...')
-    artifacts = assign_catalog_numbers(artifacts)
+    print('[data_processor] Ordering catalog (chapters by Materialgattung, '
+          'objects by Katalognummer)...')
+    artifacts = order_artifacts(artifacts)
 
     empty_gattung = [a for a in artifacts if not a['gattung']]
     if empty_gattung:
         print(f'[data_processor] WARNING: {len(empty_gattung)} artifacts have no '
-              "Gattung and are listed under 'Ohne Gattung'")
+              "Materialgattung and are listed under 'Ohne Materialgattung'")
     numeric_names = [a for a in artifacts if a['name'].isdigit()]
     if numeric_names:
         print(f'[data_processor] WARNING: {len(numeric_names)} artifacts only '
               'have a numeric name (no Objektname in the export)')
 
-    for a in artifacts:
-        print(f"[data_processor]   {a['katalognummer']}: {a['name'][:60]}")
-        print(f"[data_processor]     Images: {len(a['images'])}, "
-              f"History: {len(a['collection_history'])}, "
-              f"Locations: {len(a['all_locations'])}")
+    chapters = build_chapters(artifacts)
+    print(f'[data_processor] {len(chapters)} chapters:')
+    for chapter in chapters:
+        numbers = [a['kat_nummer'] for a in chapter['artifacts']
+                   if a['kat_nummer'] is not None]
+        span = f'{min(numbers)}-{max(numbers)}' if numbers else '-'
+        print(f"[data_processor]   {chapter['title']} "
+              f"({chapter['count']} objects, Nr. {span})")
 
     result = {
         'artifacts': artifacts,
+        'chapters': [
+            {'title': c['title'], 'count': c['count']} for c in chapters
+        ],
         'toc': build_toc(artifacts),
         'total_artifacts': len(artifacts),
         'source_columns': fieldnames,

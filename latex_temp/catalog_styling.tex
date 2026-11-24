@@ -1,18 +1,18 @@
 % ============================================================  
 % LaTeX Styling for Artefakt-Katalog  
-% Uses LuaLaTeX with TeX Gyre Termes (Times New Roman clone)  
+% Uses pdflatex with TeX Gyre Heros (metrically Arial-compatible)  
 % ============================================================  
   
 % ── Document Setup ──────────────────────────────────────────  
-\documentclass[a4paper,12pt,twoside=false]{scrartcl}  
+\documentclass[a4paper,11pt,twoside=false]{scrartcl}  
   
 % ── Fonts ───────────────────────────────────────────────────  
-% TeX Gyre Termes = Times New Roman clone  
-\usepackage{tgtermes}  
+% TeX Gyre Heros is a metric clone of Arial: same widths, same shapes,  
+% and it ships with TeX Live so no system font is required.  
+\usepackage{tgheros}  
+\renewcommand{\familydefault}{\sfdefault}  
 \usepackage[T1]{fontenc}  
 \usepackage[utf8]{inputenc}   % pdflatex needs this for the UTF-8 .tex files
-% Fallback: if tgtermes not available, use newtx  
-% \usepackage{newtxtext,newtxmath}  
   
 % ── Language ────────────────────────────────────────────────  
 \usepackage[ngerman]{babel}  
@@ -35,10 +35,11 @@
 \pagestyle{fancy}  
 \fancyhf{}  
 \fancyfoot[R]{\thepage}  
-\fancyhead[L]{\small\textit{\leftmark}}  
-\fancyhead[R]{\small\textit{Gattung}}  
+\fancyhead[L]{\small\itshape\leftmark}  
+\fancyhead[R]{\small\itshape\rightmark}  
 \renewcommand{\headrulewidth}{0.4pt}  
 \renewcommand{\footrulewidth}{0pt}  
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}  
   
 % ── Graphics ────────────────────────────────────────────────  
 \usepackage{graphicx}  
@@ -80,8 +81,10 @@
   bottom=8pt,  
   before skip=12pt,            % INCREASED from 10pt
   after skip=12pt,             % INCREASED from 10pt
-  fontupper=\itshape\small,  
-  breakable,  
+  fontupper=\fontsize{11pt}{13.5pt}\selectfont\itshape,  
+  % No 'breakable': the box always sits inside a minipage, so it can never
+  % split across pages. 'breakable' also computes break points from \pagegoal,
+  % which is \maxdimen at the top of a page and overflows there.
 }  
   
 % ── Table of Contents ───────────────────────────────────────  
@@ -96,7 +99,7 @@
   
 % ── Captions ────────────────────────────────────────────────  
 \usepackage{caption}  
-\captionsetup{font=small,labelfont=bf,textfont=it,labelsep=period}  
+\captionsetup{font=normalsize,labelfont=bf,textfont=it,labelsep=period}  
   
 % ── Hyperlinks ──────────────────────────────────────────────  
 \usepackage[hidelinks]{hyperref}  
@@ -119,29 +122,31 @@
 % Use KOMA-Script's built-in parskip instead of the package  
 \KOMAoptions{parskip=half}  
 \setlength{\parindent}{0pt}
+% KOMA's parskip sets a fixed parfillskip, which stretches the last line of
+% every paragraph. Restore the standard rubber length so text is not justified
+% with gaps, while keeping the paragraph spacing.
+\setlength{\parfillskip}{0pt plus 1fil}
 
 % ============================================================  
 % Custom Commands  
 % ============================================================  
   
 % Catalog entry title  
-\newcommand{\artifacttitle}[1]{%  
+\newcommand{\artifacttitle}[1]{%
   \FloatBarrier%                                    % ADDED: Clear all floats first
-  \vspace{16pt}%  
-  {\fontsize{24pt}{28pt}\selectfont\bfseries #1\par}%  
-  \vspace{4pt}%  
+  {\fontsize{24pt}{28pt}\selectfont\bfseries #1\par}%
 }  
   
 % Metadata line (gray, 10pt)  
 \newcommand{\metaline}[1]{%  
-  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1\par}%  
+  {\fontsize{11pt}{13.5pt}\selectfont\color{metagray}#1\par}%  
 }  
   
 % Metadata block  
 \newcommand{\metablock}[1]{%  
   \vspace{2pt}%  
   \begin{spacing}{1.15}%  
-  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1}%  
+  {\fontsize{11pt}{13.5pt}\selectfont\color{metagray}#1}%  
   \end{spacing}%  
   \vspace{10pt}%                                    % INCREASED from 8pt
 }  
@@ -155,20 +160,21 @@
 % Separator line  
 % parfillskip is non-zero because of KOMA's parskip=half; without resetting it
 % the full-width rule overflows the column by ~12pt.
+% No \FloatBarrier here: the separator is typeset inside the measured entry
+% box, where a float barrier is neither needed nor legal.
 \newcommand{\artifactsep}{%  
-  \FloatBarrier%                                    % ADDED: Clear floats before separator
-  \vspace{14pt}%                                    % INCREASED from 10pt
+  \vspace{14pt}%
   {\parfillskip=0pt\relax
    \noindent\rule{\textwidth}{0.3pt}\par}%
-  \vspace{14pt}%                                    % INCREASED from 10pt
+  \vspace{14pt}%
 }  
   
-% Reference text (gray, 10pt)  
-\newcommand{\referencetext}[1]{%  
-  \vspace{10pt}%                                    % INCREASED from 8pt
-  {\fontsize{10pt}{13pt}\selectfont\color{metagray}#1\par}%  
-  \vspace{6pt}%                                     % ADDED: Space after reference
-}  
+% Reference text (gray, 10pt) — tight list, no extra paragraph spacing
+\newcommand{\referencetext}[1]{%
+  \par\vspace{2pt}%
+  \noindent{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}#1\par}%
+  \vspace{0pt}%
+}
 
 % NEW: Enhanced image commands to prevent overlap
 % Use this for wrapped figures
@@ -193,14 +199,21 @@
   \vspace{6pt}%
 }
 
-% NEW: Clear page if less than specified space remains
-\newcommand{\needspace}[1]{%
-  \par\penalty-100\vskip 0pt plus 1fil\penalty 100\vskip 0pt plus -1fil%
-  \ifdim\pagetotal>\dimexpr\pagegoal-#1\relax%
-    \clearpage%
-  \fi%
+\makeatletter
+% Break the page unless #1 of vertical space is still available.
+% Reserves the space before \markboth so the mark cannot discard it.
+\newcommand{\catalogbreak}[1]{%
+  \par\penalty-100
+  \begingroup
+    \dimen@=#1\relax
+    \dimen@ii=\pagegoal
+    \advance\dimen@ii by -\pagetotal
+    \ifdim\dimen@ii<\dimen@
+      \aftergroup\clearpage
+    \fi
+  \endgroup
 }
-
+\makeatother
 % NEW: Start a new artifact entry (use at beginning of each artifact)
 % (unused in current template - commented out to avoid definition conflicts)
 % \newcommand{\startartifact}{%
