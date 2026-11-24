@@ -166,7 +166,7 @@ def description_box(artifact):
     """
     fischer = (artifact.get('beschreibung_fischer') or '').strip()
     if fischer:
-        return fischer, 'Beschreibung Katalog Fischer 1936'
+        return fischer, 'Beschreibung Katalog Galerie Fischer 1936'
 
     extern = (artifact.get('beschreibung_extern') or '').strip()
     if not extern:
@@ -509,7 +509,6 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
 
     lines = []
     lines.append('')
-    lines.append(r'\markboth{' + chapter_mark + '}{' + (obergattung or '') + '}')
     lines.append(r'\FloatBarrier')
     lines.append('')
     lines.append('%' + '-' * 60)
@@ -538,6 +537,10 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
         lines.append(r'    \clearpage')
         lines.append(r'  \fi')
         lines.append(r'\fi')
+
+    # The marks are set after the page break: emitted before it, they would
+    # describe the page the entry was pushed away from.
+    lines.append(r'\markboth{' + chapter_mark + '}{' + (obergattung or '') + '}')
 
     # The vertical gap belongs after the page break: emitted before it, it
     # would be the only content of the page it is pushed onto. The first entry
@@ -672,7 +675,9 @@ def generate_latex(data_path, output_path, bilder_dir):
             first_in_chapter = True
             doc.append(r'\newpage')
             doc.append(r'\FloatBarrier')
-            doc.append(r'\markboth{' + escape_meta(chapter) + '}{}')
+            # No \markboth here: the first entry sets both marks, and an empty
+            # right mark would win over it (\rightmark uses the first mark on
+            # the page), leaving the Obergattung blank on chapter pages.
             doc.append('')
 
         label = art['katalog_id'].replace('.', '-').replace(' ', '-')
