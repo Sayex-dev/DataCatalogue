@@ -34,11 +34,13 @@
 \usepackage{lastpage}  
 \pagestyle{fancy}  
 \fancyhf{}  
-\fancyfoot[R]{\thepage}  
-\fancyhead[L]{\small\itshape\leftmark}  
-\fancyhead[R]{\small\itshape\rightmark}  
-\renewcommand{\headrulewidth}{0.4pt}  
+\fancyfoot[R]{\small\color{refgray}\thepage}  
+\fancyhead[L]{\small\bfseries\color{accent}\leftmark}  
+\fancyhead[R]{\small\itshape\color{refgray}\rightmark}  
+\renewcommand{\headrulewidth}{0.3pt}  
 \renewcommand{\footrulewidth}{0pt}  
+\renewcommand{\headrule}{%
+  \hbox to\headwidth{\color{quoteborder}\leaders\hrule height \headrulewidth\hfill}}  
 \renewcommand{\sectionmark}[1]{\markboth{#1}{}}  
   
 % ── Graphics ────────────────────────────────────────────────  
@@ -55,10 +57,17 @@
   
 % ── Colors ──────────────────────────────────────────────────  
 \usepackage{xcolor}  
-\definecolor{metagray}{HTML}{777777}  
-\definecolor{quotebg}{HTML}{F5F5F0}  
-\definecolor{quoteborder}{HTML}{CCCCBB}  
+% Three text levels instead of one grey: primary body text, metadata and
+% secondary references. A single muted accent (ochre) marks numbers and
+% chapter headings only.
+\definecolor{bodytext}{HTML}{1A1A1A}  
+\definecolor{metagray}{HTML}{4A4A4A}  
+\definecolor{refgray}{HTML}{8A8A8A}  
+\definecolor{accent}{HTML}{8B6F47}  
+\definecolor{quotebg}{HTML}{FAF8F4}  
+\definecolor{quoteborder}{HTML}{E0DCD3}  
 \definecolor{sectionline}{HTML}{444444}  
+\definecolor{zebra}{HTML}{FAFAFA}  
   
 % ── Tables ──────────────────────────────────────────────────  
 \usepackage{tabularx}  
@@ -70,18 +79,23 @@
 % ── Quote Boxes ─────────────────────────────────────────────  
 \usepackage{tcolorbox}  
 \tcbuselibrary{breakable,skins}  
+% Upright text with a coloured left bar instead of a full frame: long German
+% catalogue descriptions are tiring to read in italics.
 \newtcolorbox{quotebox}{  
+  enhanced,  
   colback=quotebg,  
-  colframe=quoteborder,  
-  boxrule=0.5pt,  
-  arc=3pt,  
+  colframe=quotebg,  
+  frame hidden,  
+  borderline west={2.5pt}{0pt}{accent},  
+  arc=0pt,  
+  outer arc=0pt,  
   left=10pt,  
-  right=10pt,  
-  top=8pt,  
-  bottom=8pt,  
-  before skip=12pt,            % INCREASED from 10pt
-  after skip=12pt,             % INCREASED from 10pt
-  fontupper=\fontsize{11pt}{13.5pt}\selectfont\itshape,  
+  right=8pt,  
+  top=7pt,  
+  bottom=7pt,  
+  before skip=10pt,  
+  after skip=10pt,  
+  fontupper=\fontsize{11pt}{14.5pt}\selectfont,  
   % No 'breakable': the box always sits inside a minipage, so it can never
   % split across pages. 'breakable' also computes break points from \pagegoal,
   % which is \maxdimen at the top of a page and overflows there.
@@ -127,14 +141,28 @@
 % with gaps, while keeping the paragraph spacing.
 \setlength{\parfillskip}{0pt plus 1fil}
 
+% Body text uses the softer near-black instead of pure black.
+\AtBeginDocument{\color{bodytext}}
+
 % ============================================================  
 % Custom Commands  
 % ============================================================  
   
-% Catalog entry title  
-\newcommand{\artifacttitle}[1]{%
-  \FloatBarrier%                                    % ADDED: Clear all floats first
-  {\fontsize{24pt}{28pt}\selectfont\bfseries #1\par}%
+% Catalog entry title: the object name dominates, the catalogue number is a
+% small ochre marker in front of it.
+\newcommand{\artifacttitle}[2]{% #1 = catalogue number, #2 = name
+  \FloatBarrier%
+  {\fontsize{19pt}{23pt}\selectfont\bfseries
+   \textcolor{accent}{#1}\hspace{0.45em}#2\par}%
+}  
+  
+% Chapter heading: clearly above the object titles in the hierarchy.
+\newcommand{\chapterheading}[1]{%
+  {\fontsize{30pt}{34pt}\selectfont\bfseries\color{accent}#1\par}%
+  \vspace{4pt}%
+  {\parfillskip=0pt\relax
+   \noindent{\color{accent}\rule{\textwidth}{0.8pt}}\par}%
+  \vspace{14pt}%
 }  
   
 % Metadata line (gray, 10pt)  
@@ -162,19 +190,26 @@
 % the full-width rule overflows the column by ~12pt.
 % No \FloatBarrier here: the separator is typeset inside the measured entry
 % box, where a float barrier is neither needed nor legal.
+% A short, light rule separates entries without competing with the chapter rule.
 \newcommand{\artifactsep}{%  
-  \vspace{14pt}%
+  \vspace{16pt}%
   {\parfillskip=0pt\relax
-   \noindent\rule{\textwidth}{0.3pt}\par}%
-  \vspace{14pt}%
+   \noindent{\color{quoteborder}\rule{0.45\textwidth}{0.2pt}}\par}%
+  \vspace{16pt}%
 }  
   
 % Reference text (gray, 10pt) — tight list, no extra paragraph spacing
 \newcommand{\referencetext}[1]{%
   \par\vspace{2pt}%
-  \noindent{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}#1\par}%
+  \noindent{\fontsize{10pt}{13pt}\selectfont\color{refgray}#1\par}%
   \vspace{0pt}%
 }
+
+% Image proof line below a figure
+\newcommand{\imageproof}[1]{%
+  \par\vspace{3pt}%
+  {\fontsize{9pt}{11.5pt}\selectfont\color{refgray}#1\par}%
+}  
 
 % NEW: Enhanced image commands to prevent overlap
 % Use this for wrapped figures

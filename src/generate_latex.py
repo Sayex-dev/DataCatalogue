@@ -252,12 +252,14 @@ def format_location_table(artifact):
 
     lines = [
         r'\begin{samepage}',
-        r'\vspace{4pt}',
-        r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}',
-        r'\textbf{Standortverlauf (chronologisch)}\\',
-        r'\vspace{2pt}',
+        r'\vspace{6pt}',
+        r'{\fontsize{10pt}{13pt}\selectfont\color{refgray}',
+        r'\textsc{Standortverlauf (chronologisch)}\\',
+        r'\vspace{3pt}',
+        r'\rowcolors{2}{zebra}{white}',
         r'\begin{tabular}{' + spec + '}',
         r'\toprule',
+        r'\rowcolor{white}',
         header,
         r'\midrule',
     ]
@@ -294,16 +296,19 @@ def image_entries(artifact, bilder_dir):
 
 
 def placeholder_box(label):
-    """Grey box shown when a figure file is missing."""
+    """Quiet dashed box shown when a figure file is missing."""
     esc = (label.replace('_', r'\_').replace('&', r'\&')
            .replace('%', r'\%').replace('#', r'\#'))
-    content = r'\centering Bild nicht verfügbar'
+    content = r'\centering\color{refgray}Bild nicht verfügbar'
     if esc:
         # Long file names must be allowed to break at any character.
-        content += r'\\ \texttt{\small ' + r'\allowbreak{}'.join(esc) + '}'
+        content += (r'\\[2pt]{\fontsize{8pt}{10pt}\selectfont\ttfamily '
+                    + r'\allowbreak{}'.join(esc) + '}')
     return (
-        r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}'
-        r'\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{'
+        r'{\fontsize{10pt}{13pt}\selectfont'
+        r'\setlength{\fboxrule}{0.4pt}\setlength{\fboxsep}{6pt}'
+        r'\fcolorbox{quoteborder}{quotebg}{'
+        r'\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{'
         + content + r'}}\par}'
     )
 
@@ -341,10 +346,7 @@ def format_image_block(artifact, bilder_dir):
                 + escape_meta(f'Abb. {number}: {entry["caption"]}') + r'\par}'
             )
         if entry['proof']:
-            lines.append(
-                r'{\fontsize{11pt}{13.5pt}\selectfont\color{metagray}'
-                + escape_meta(entry['proof']) + r'\par}'
-            )
+            lines.append(f'\\imageproof{{{escape_meta(entry["proof"])}}}')
 
         lines.append(r'\end{center}')
         lines.append(r'\end{samepage}')
@@ -365,15 +367,13 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     """
     kn = artifact['katalognummer']
     artifact_name = escape_meta(artifact['name'])
-    title = (f'{{\\fontsize{{17pt}}{{21pt}}\\selectfont\\color{{metagray}}'
-             f'{kn}}} {artifact_name}')
     obergattung = escape_meta(artifact.get('obergattung', ''))
     chapter_mark = escape_meta(chapter)
 
     # Body of the entry, kept as a unit so its height can be measured.
     body = []
-    body.append(f'\\artifacttitle{{{title}}}')
-    body.append(r'\vspace{4pt}')
+    body.append(f'\\artifacttitle{{{kn}}}{{{artifact_name}}}')
+    body.append(r'\vspace{6pt}')
 
     # Left column: metadata + descriptions
     left_content = [r'{\parskip=0pt\relax']
@@ -437,18 +437,26 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     left_content.append(r'}')
 
     image_block = format_image_block(artifact, bilder_dir)
-    body.extend([
-        r'\noindent',
-        r'\begin{minipage}[t]{0.55\textwidth}',
-        '\n'.join(left_content),
-        r'\end{minipage}',
-    ])
     if image_block:
+        # Two columns: text left, figure right.
         body.extend([
+            r'\noindent',
+            r'\begin{minipage}[t]{0.55\textwidth}',
+            '\n'.join(left_content),
+            r'\end{minipage}',
             r'\hfill',
             r'\begin{minipage}[t]{0.42\textwidth}',
             r'\vspace{0pt}',
             image_block,
+            r'\end{minipage}',
+        ])
+    else:
+        # No figure: the text uses the full width instead of leaving the right
+        # column empty (90% of the objects have no image).
+        body.extend([
+            r'\noindent',
+            r'\begin{minipage}[t]{0.78\textwidth}',
+            '\n'.join(left_content),
             r'\end{minipage}',
         ])
 
@@ -523,34 +531,38 @@ def generate_toc_section(data):
     lines.append(r'\begingroup')
     lines.append(r'\setlength{\parindent}{0pt}')
     lines.append(r'\begin{center}')
-    lines.append(r'{\fontsize{22pt}{28pt}\selectfont\bfseries Inhaltsverzeichnis}')
+    lines.append(r'{\fontsize{22pt}{28pt}\selectfont\bfseries '
+                 r'\color{accent}Inhaltsverzeichnis}')
     lines.append(r'\par\vspace{4pt}')
-    lines.append(r'\rule{0.6\textwidth}{0.6pt}')
+    lines.append(r'{\color{accent}\rule{0.6\textwidth}{0.6pt}}')
     lines.append(r'\end{center}')
-    lines.append(r'\vspace{20pt}')
+    lines.append(r'\vspace{18pt}')
 
     for chapter, artifacts in toc.items():
         heading = escape_meta(chapter)
         lines.append('')
-        lines.append(r'\vspace{8pt}')
+        lines.append(r'\vspace{10pt}')
         lines.append(
-            f'{{\\fontsize{{12pt}}{{16pt}}\\selectfont\\itshape '
-            f'{heading}\\par}}'
+            f'{{\\fontsize{{13pt}}{{16pt}}\\selectfont\\bfseries'
+            f'\\color{{accent}}{heading}\\par}}'
         )
-        lines.append(r'\vspace{8pt}')
+        lines.append(r'\vspace{1pt}')
+        lines.append(r'{\parfillskip=0pt\relax'
+                     r'\noindent{\color{quoteborder}\rule{0.35\textwidth}{0.4pt}}\par}')
+        lines.append(r'\vspace{5pt}')
         for a in artifacts:
             kn = a['katalognummer']
             nm = escape_meta(a['name'])
             lbl = f"art:{a['katalog_id'].replace('.', '-').replace(' ', '-')}"
             lines.append(
-                r'\noindent{\fontsize{11pt}{13.5pt}\selectfont'
-                r'\hspace*{1.5em}'
-                f'{kn}\\quad {nm}'
+                r'\noindent{\fontsize{10pt}{12.5pt}\selectfont'
+                r'\hspace*{1.2em}'
+                f'\\textcolor{{accent}}{{{kn}}}\\hspace{{0.6em}}{nm}'
                 r'\dotfill\ '
                 f'\\pageref{{{lbl}}}'
                 r'\par}'
             )
-            lines.append(r'\vspace{4pt}')
+            lines.append(r'\vspace{2.5pt}')
         lines.append(r'\vspace{2pt}')
 
     lines.append(r'\vspace{16pt}')
@@ -570,14 +582,25 @@ def generate_latex(data_path, output_path, bilder_dir):
     # One \rhead per Gattung group: the first artifact of each group sets it.
     doc = [r'\input{catalog_styling.tex}', '', r'\begin{document}', '']
 
-    # Title page
+    # Title page: three blocks — institution on top, title in the middle,
+    # year at the bottom.
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
+    doc.append(r'\vspace*{1.2cm}')
+    doc.append(r'{\fontsize{10pt}{13pt}\selectfont\scshape'
+               r'\color{refgray}Archäologische Sammlung UZH\par}')
     doc.append(r'\vspace*{\fill}')
-    doc.append(r'{\fontsize{36pt}{44pt}\selectfont\bfseries Katalog}')
-    doc.append(r'\par\vspace{12pt}')
-    doc.append(r'\rule{0.5\textwidth}{0.8pt}')
+    doc.append(r'{\color{accent}\rule{0.18\textwidth}{1.2pt}\par}')
+    doc.append(r'\vspace{14pt}')
+    doc.append(r'{\fontsize{40pt}{46pt}\selectfont\bfseries Katalog\par}')
+    doc.append(r'\vspace{10pt}')
+    doc.append(r'{\fontsize{13pt}{17pt}\selectfont\itshape'
+               r'\color{metagray}Sammlung Arnold Ruesch\par}')
+    doc.append(r'\vspace{14pt}')
+    doc.append(r'{\color{accent}\rule{0.18\textwidth}{1.2pt}\par}')
     doc.append(r'\vspace*{\fill}')
+    doc.append(r'{\fontsize{11pt}{14pt}\selectfont\color{refgray}1936\par}')
+    doc.append(r'\vspace*{1.2cm}')
     doc.append(r'\end{center}')
     doc.append(r'\newpage')
     doc.append('')
@@ -609,13 +632,7 @@ def generate_latex(data_path, output_path, bilder_dir):
             doc.append(r'\FloatBarrier')
             doc.append(r'\markboth{' + escape_meta(chapter) + '}{}')
             doc.append('')
-            doc.append(
-                r'{\fontsize{20pt}{24pt}\selectfont\bfseries '
-                + escape_meta(chapter) + r'\par}'
-            )
-            doc.append(r'\vspace{2pt}')
-            doc.append(r'\noindent\rule{\textwidth}{0.6pt}')
-            doc.append(r'\vspace{10pt}')
+            doc.append(r'\chapterheading{' + escape_meta(chapter) + '}')
             doc.append('')
 
         label = art['katalog_id'].replace('.', '-').replace(' ', '-')
