@@ -203,11 +203,17 @@ def fmt_date(date_str):
 
 
 def format_entry_fields(artifact):
-    """Steckbrief fields in the order requested by the editorship."""
+    """
+    All metadata and reference fields as one block.
+
+    Labels follow the CSV column names so the catalogue and the export stay
+    consistent. Fields without data are omitted.
+    """
     def clean(value):
         return escape_meta(value) if value else ''
 
     rows = [
+        # Steckbrief
         ('Standort', clean(artifact.get('aktueller_standort'))),
         ('Eigentümer', clean(artifact.get('eigentuemer'))),
         ('Status', clean(artifact.get('status'))),
@@ -215,13 +221,17 @@ def format_entry_fields(artifact):
         ('Grösse', clean(artifact.get('groesse'))),
         ('Datierung', clean(artifact.get('datierung'))),
         ('Kulturkreis', clean(artifact.get('kulturkreis'))),
-        ('Angaben Fundort', clean(artifact.get('weitere_info_fundort'))),
+        ('Infos Fundort', clean(artifact.get('weitere_info_fundort'))),
         ('Künstler', clean(artifact.get('kuenstler'))),
         ('Erhaltung', clean(artifact.get('erhaltung'))),
-        ('Dekor', clean(artifact.get('dekor'))),
         ('Auktion 1936, Lot-Nr.', clean(artifact.get('katalog_fischer'))),
-        ('ID UZH', clean(artifact.get('inv_nr_uzh'))),
+        ('Inv. Nr. UZH', clean(artifact.get('inv_nr_uzh'))),
         ('Platzierung im Haus', clean(artifact.get('platzierung_haus'))),
+        # References
+        ('Literatur', clean(artifact.get('referenz_literatur'))),
+        ('In Kunsthandel', clean(artifact.get('auktionen'))),
+        ('Vergleiche', clean(artifact.get('vergleiche'))),
+        ('Provenienz', clean(artifact.get('provenienz'))),
     ]
     return [f'\\textbf{{{label}:}} {value}' for label, value in rows if value]
 
@@ -278,14 +288,14 @@ def format_location_table(artifact):
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.0cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.9cm}@{}')
-        header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
+        header = (r'\textbf{Sammlung} & \textbf{Von} & \textbf{Bis} '
                   r'& \textbf{Ort} & \textbf{Sammler} \\')
     else:
         spec = (r'@{}>{\raggedright\arraybackslash}p{5.0cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{4.0cm}@{}')
-        header = (r'\textbf{Sammlung} & \multicolumn{2}{c}{\textbf{Zeitraum}} '
+        header = (r'\textbf{Sammlung} & \textbf{Von} & \textbf{Bis} '
                   r'& \textbf{Sammler} \\')
 
     lines = [
@@ -441,32 +451,6 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
             latex_escape(format_body_text(artifact['beschreibung_mie']))
         )
         left_content.append('')
-
-    reference_lines = []
-    if artifact.get('provenienz'):
-        reference_lines.append(
-            f'\\referencetext{{Provenienz: {escape_meta(artifact["provenienz"])}}}'
-        )
-    if artifact.get('referenz_literatur'):
-        reference_lines.append(
-            f'\\referencetext{{{escape_meta(artifact["referenz_literatur"])}}}'
-        )
-    if artifact.get('vergleiche'):
-        reference_lines.append(
-            f'\\referencetext{{Vergleiche: '
-            f'{escape_meta(artifact["vergleiche"])}}}'
-        )
-    if artifact.get('auktionen'):
-        reference_lines.append(
-            f'\\referencetext{{Auktionen: {escape_meta(artifact["auktionen"])}}}'
-        )
-
-    if reference_lines:
-        # parskip=half would add a half line between each reference; the block
-        # should read as one compact list instead.
-        left_content.append(r'{\parskip=0pt\relax')
-        left_content.extend(reference_lines)
-        left_content.append(r'\par}')
 
     # Close the compact-spacing group opened at the top of the column.
     left_content.append(r'}')
