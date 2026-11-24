@@ -314,14 +314,8 @@ def format_image_block(artifact, bilder_dir):
     entries = image_entries(artifact, bilder_dir)
 
     if not entries:
-        # The export has no Bildreferenz for this object yet.
-        lines.append(r'\begin{samepage}')
-        lines.append(r'\begin{center}')
-        lines.append(placeholder_box(''))
-        lines.append(r'\end{center}')
-        lines.append(r'\end{samepage}')
-        lines.append(r'\vspace{10pt}')
-        return '\n'.join(lines)
+        # No Bildreferenz in the export: no image, no placeholder.
+        return ''
 
     for entry in entries:
         number = entry['index'] + 1
@@ -336,8 +330,12 @@ def format_image_block(artifact, bilder_dir):
         else:
             lines.append(placeholder_box(entry['name']))
 
+        # \includegraphics does not end a paragraph, so without this the
+        # caption and the Abbildungsnachweis would start beside the image.
+        lines.append(r'\par')
+
         if entry['caption']:
-            lines.append(r'\par\vspace{4pt}')
+            lines.append(r'\vspace{4pt}')
             lines.append(
                 r'{\fontsize{11pt}{13.5pt}\selectfont\itshape '
                 + escape_meta(f'Abb. {number}: {entry["caption"]}') + r'\par}'
