@@ -433,13 +433,6 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
         )
         left_content.append(r'\vspace{4pt}')
         left_content.append(latex_escape(format_body_text(box_text)))
-        if artifact.get('annotationen'):
-            left_content.append('')
-            left_content.append(r'\medskip')
-            left_content.append(
-                r'{\fontsize{11pt}{13.5pt}\selectfont\bfseries Anmerkungen:} '
-                + escape_meta(artifact['annotationen'])
-            )
         left_content.append(r'\end{quotebox}')
         left_content.append('')
 
@@ -627,13 +620,9 @@ def generate_latex(data_path, output_path, bilder_dir):
     # One \rhead per Gattung group: the first artifact of each group sets it.
     doc = [r'\input{catalog_styling.tex}', '', r'\begin{document}', '']
 
-    # Title page: three blocks — institution on top, title in the middle,
-    # year at the bottom.
+    # Title page: title block in the middle, year at the bottom.
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
-    doc.append(r'\vspace*{1.2cm}')
-    doc.append(r'{\fontsize{10pt}{13pt}\selectfont\scshape'
-               r'\color{refgray}Archäologische Sammlung UZH\par}')
     doc.append(r'\vspace*{\fill}')
     doc.append(r'{\color{accent}\rule{0.18\textwidth}{1.2pt}\par}')
     doc.append(r'\vspace{14pt}')
