@@ -142,6 +142,44 @@ def split_references(value):
     return [part.strip() for part in value.split(';') if part.strip()]
 
 
+# Trailing source marker in "Beschreibung extern" -> label of the description
+# box. The marker is removed from the text and replaced by the label.
+EXTERN_SOURCE_LABELS = {
+    'mp': 'Beschreibung MuseumPlus UZH',
+    'BM': 'Beschreibung British Museum',
+    'Bonhams': 'Beschreibung Bonhams',
+    "Christie's": 'Beschreibung Christie\'s',
+    'Koller': 'Beschreibung Koller',
+    "Sotheby's": 'Beschreibung Sotheby\'s',
+}
+
+EXTERN_MARKER_RE = re.compile(r'\s*\(([^()]{1,20})\)\s*$')
+
+
+def description_box(artifact):
+    """
+    Text and label for the highlighted description box.
+
+    The catalogue text from Fischer is preferred. When it is missing, the
+    external description is used and its trailing source marker (mp, BM,
+    Bonhams, ...) becomes the label.
+    """
+    fischer = (artifact.get('beschreibung_fischer') or '').strip()
+    if fischer:
+        return fischer, 'Beschreibung Katalog Fischer 1936'
+
+    extern = (artifact.get('beschreibung_extern') or '').strip()
+    if not extern:
+        return '', ''
+
+    match = EXTERN_MARKER_RE.search(extern)
+    if match and match.group(1) in EXTERN_SOURCE_LABELS:
+        return (extern[:match.start()].rstrip(),
+                EXTERN_SOURCE_LABELS[match.group(1)])
+
+    return extern, 'Beschreibung extern'
+
+
 def fmt_date(date_str):
     """Convert a database date to DD.MM.YYYY, resolving ±∞."""
     if not date_str:
@@ -383,13 +421,17 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
         left_content.append(r' \\ '.join(fields))
         left_content.append('}')
 
-    # Description box: catalogue text, with the external description as
-    # fallback when the export only carries one of the two texts.
-    box_text = (artifact.get('beschreibung_fischer')
-                or artifact.get('beschreibung_extern'))
+    # Description box: catalogue text from Fischer, or the external
+    # description with its source marker turned into the label.
+    box_text, box_label = description_box(artifact)
     if box_text:
         left_content.append('')
         left_content.append(r'\begin{quotebox}')
+        left_content.append(
+            r'{\fontsize{9pt}{11.5pt}\selectfont\bfseries\color{accent}'
+            + escape_meta(box_label) + r':\par}'
+        )
+        left_content.append(r'\vspace{4pt}')
         left_content.append(latex_escape(format_body_text(box_text)))
         if artifact.get('annotationen'):
             left_content.append('')
@@ -631,8 +673,6 @@ def generate_latex(data_path, output_path, bilder_dir):
             doc.append(r'\newpage')
             doc.append(r'\FloatBarrier')
             doc.append(r'\markboth{' + escape_meta(chapter) + '}{}')
-            doc.append('')
-            doc.append(r'\chapterheading{' + escape_meta(chapter) + '}')
             doc.append('')
 
         label = art['katalog_id'].replace('.', '-').replace(' ', '-')

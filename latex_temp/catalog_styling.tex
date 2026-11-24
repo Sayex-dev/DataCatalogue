@@ -156,14 +156,8 @@
    \textcolor{accent}{#1}\hspace{0.45em}#2\par}%
 }  
   
-% Chapter heading: clearly above the object titles in the hierarchy.
-\newcommand{\chapterheading}[1]{%
-  {\fontsize{30pt}{34pt}\selectfont\bfseries\color{accent}#1\par}%
-  \vspace{4pt}%
-  {\parfillskip=0pt\relax
-   \noindent{\color{accent}\rule{\textwidth}{0.8pt}}\par}%
-  \vspace{14pt}%
-}  
+% Chapter heading is not printed: the running head already names the chapter,
+% and the object titles carry the hierarchy.
   
 % Metadata line (gray, 10pt)  
 \newcommand{\metaline}[1]{%  
