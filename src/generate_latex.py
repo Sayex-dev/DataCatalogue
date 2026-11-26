@@ -156,6 +156,11 @@ EXTERN_SOURCE_LABELS = {
 EXTERN_MARKER_RE = re.compile(r'\s*\(([^()]{1,20})\)\s*$')
 
 
+def strip_fischer_marker(text):
+    """Remove the '(F)' source marker and the spaces around it."""
+    return re.sub(r'[ \t]*\(F\)[ \t]*', '', text).strip()
+
+
 def description_box(artifact):
     """
     Text and label for the highlighted description box.
@@ -166,7 +171,8 @@ def description_box(artifact):
     """
     fischer = (artifact.get('beschreibung_fischer') or '').strip()
     if fischer:
-        return fischer, 'Beschreibung Katalog Galerie Fischer 1936'
+        return (strip_fischer_marker(fischer),
+                'Beschreibung Katalog Galerie Fischer 1936')
 
     extern = (artifact.get('beschreibung_extern') or '').strip()
     if not extern:
@@ -174,10 +180,10 @@ def description_box(artifact):
 
     match = EXTERN_MARKER_RE.search(extern)
     if match and match.group(1) in EXTERN_SOURCE_LABELS:
-        return (extern[:match.start()].rstrip(),
+        return (strip_fischer_marker(extern[:match.start()].rstrip()),
                 EXTERN_SOURCE_LABELS[match.group(1)])
 
-    return extern, 'Beschreibung extern'
+    return strip_fischer_marker(extern), 'Beschreibung extern'
 
 
 def fmt_date(date_str):
@@ -301,8 +307,8 @@ def format_location_table(artifact):
     lines = [
         r'\begin{samepage}',
         r'\vspace{6pt}',
-        r'{\fontsize{11pt}{13.5pt}\selectfont\color{refgray}',
-        r'\textsc{Standortverlauf (chronologisch)}\\',
+        r'{\sffamily\fontsize{11pt}{13.5pt}\selectfont\color{refgray}',
+        r'Standortverlauf (chronologisch)\\',
         r'\vspace{3pt}',
         r'\rowcolors{2}{zebra}{white}',
         r'\begin{tabular}{' + spec + '}',

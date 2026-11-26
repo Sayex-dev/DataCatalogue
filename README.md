@@ -87,6 +87,26 @@ Passe die Aufrufargumente einfach an deine Verzeichnisstruktur an.
 Die Datei `artefakte_export.csv` muss **unverändert** bleiben – das Tool
 liest nur daraus.
 
+## Visuelle Kontrolle (Docker)
+
+`verify.ps1` baut den Katalog in Docker und rendert die gewünschten Seiten als
+PNG – ohne lokale LaTeX-Installation:
+
+```powershell
+.\verify.ps1              # Seite 1
+.\verify.ps1 1 25 40      # Seiten 1, 25 und 40
+```
+
+Ergebnis:
+
+- `verify_out\page-<N>.png` – die gerenderten Seiten (110 dpi)
+- `verify_out\report.txt` – Seitenzahl, Fehler, undefinierte Referenzen,
+  Overfull-Boxen
+- `katalog_output.pdf` und `latex_temp\catalog.log` werden aktualisiert
+
+Das Image wird nur neu gebaut, wenn sich eine Quelldatei geändert hat.
+`verify_out/` ist in `.gitignore` eingetragen.
+
 ## CSV-Format
 
 Die CSV-Datei muss folgende Spalten enthalten (flache Struktur mit

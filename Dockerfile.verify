@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        texlive-latex-recommended \
+        texlive-latex-extra \
+        texlive-lang-german \
+        texlive-fonts-recommended \
+        texlive-fonts-extra \
+        tex-gyre \
+        texlive-pictures \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# PyMuPDF renders the finished PDF to PNG for visual checks.
+RUN pip install --no-cache-dir pymupdf
+
+WORKDIR /app
+
+COPY src/ ./src/
+COPY latex_temp/catalog_styling.tex ./latex_temp/
+COPY artefakte_export.csv .
+COPY bilder/ ./bilder/
+COPY verify.sh /usr/local/bin/verify.sh
+RUN chmod +x /usr/local/bin/verify.sh
+
+# Arguments are 1-based PDF page numbers; the rendered PNGs land in /app/out.
+ENTRYPOINT ["/usr/local/bin/verify.sh"]
