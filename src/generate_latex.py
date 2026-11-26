@@ -242,6 +242,12 @@ def format_entry_fields(artifact):
     return [(label, value) for label, value in rows if value]
 
 
+# Fields whose value is a list of measurements (H/B/T). When the value spans
+# several lines the label gets its own line so the values align under each
+# other; a single measurement stays inline with the label.
+STACKED_FIELDS = {'Grösse'}
+
+
 def format_location_table(artifact):
     """
     Chronological location history as a fixed-width tabular.
@@ -434,7 +440,10 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     if fields:
         meta_content.append(r'\metablock{')
         meta_content.extend(
-            f'\\metaitem{{{label}}}{{{value}}}' for label, value in fields
+            f'\\metaitemstack{{{label}}}{{{value}}}'
+            if label in STACKED_FIELDS and r' \\ ' in value
+            else f'\\metaitem{{{label}}}{{{value}}}'
+            for label, value in fields
         )
         meta_content.append('}')
     meta_content.append(r'}')

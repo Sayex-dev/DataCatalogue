@@ -185,6 +185,14 @@
   {\hangindent=1.2em \hangafter=1 \noindent\textbf{#1:} #2\par}%  
 }  
   
+% A field whose value already spans several lines (e.g. Grösse with H/B/T).
+% The label gets its own line and every value line shares the same indent, so
+% the stacked values align with each other instead of with the label.
+\newcommand{\metaitemstack}[2]{%  
+  \par\noindent\textbf{#1:}\par\nobreak  
+  {\leftskip=1.2em \noindent #2\par}%  
+}  
+  
 % Catalog number marker (small, above title, number only)
 \newcommand{\catnum}[1]{%
   {\fontsize{9pt}{12pt}\selectfont\color{metagray}#1\par}%
