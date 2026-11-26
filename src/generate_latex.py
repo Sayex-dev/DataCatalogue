@@ -235,11 +235,11 @@ def format_entry_fields(artifact):
         ('Platzierung im Haus', clean(artifact.get('platzierung_haus'))),
         # References
         ('Literatur', clean(artifact.get('referenz_literatur'))),
-        ('In Kunsthandel', clean(artifact.get('auktionen'))),
+        ('in Kunsthandel', clean(artifact.get('auktionen'))),
         ('Vergleiche', clean(artifact.get('vergleiche'))),
         ('Provenienz', clean(artifact.get('provenienz'))),
     ]
-    return [f'\\textbf{{{label}:}} {value}' for label, value in rows if value]
+    return [(label, value) for label, value in rows if value]
 
 
 def format_location_table(artifact):
@@ -294,22 +294,23 @@ def format_location_table(artifact):
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.0cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.6cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.9cm}@{}')
-        header = (r'\textbf{Sammlung} & \textbf{Von} & \textbf{Bis} '
-                  r'& \textbf{Ort} & \textbf{Sammler} \\')
+        header = (r'\tablehead{Sammlung} & \tablehead{von} & \tablehead{bis} '
+                  r'& \tablehead{Ort} & \tablehead{Sammler} \\')
     else:
         spec = (r'@{}>{\raggedright\arraybackslash}p{5.0cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{2.5cm}'
                 r'@{\hspace{6pt}}>{\raggedright\arraybackslash}p{4.0cm}@{}')
-        header = (r'\textbf{Sammlung} & \textbf{Von} & \textbf{Bis} '
-                  r'& \textbf{Sammler} \\')
+        header = (r'\tablehead{Sammlung} & \tablehead{von} & \tablehead{bis} '
+                  r'& \tablehead{Sammler} \\')
 
     lines = [
         r'\begin{samepage}',
         r'\vspace{6pt}',
-        r'{\sffamily\fontsize{11pt}{13.5pt}\selectfont\color{refgray}',
-        r'Standortverlauf (chronologisch)\\',
-        r'\vspace{3pt}',
+        r'{\sffamily\fontsize{12pt}{14.5pt}\selectfont\bfseries\color{metagray}'
+        r'Standortverlauf\par}',
+        #r'\vspace{6pt}',
+        r'{\sffamily\fontsize{11pt}{13.5pt}\selectfont\color{metagray}',
         r'\rowcolors{2}{zebra}{white}',
         r'\begin{tabular}{' + spec + '}',
         r'\rowcolor{white}',
@@ -410,8 +411,7 @@ def format_image_block(artifact, bilder_dir):
 
 
 def generate_artifact_entry(artifact, bilder_dir, chapter='',
-                           first_in_chapter=False, last_in_chapter=False,
-                           label=''):
+                           first_in_chapter=False, label=''):
     """
     Generate LaTeX for one artifact.
 
@@ -433,7 +433,9 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     fields = format_entry_fields(artifact)
     if fields:
         meta_content.append(r'\metablock{')
-        meta_content.append(r' \\ '.join(fields))
+        meta_content.extend(
+            f'\\metaitem{{{label}}}{{{value}}}' for label, value in fields
+        )
         meta_content.append('}')
     meta_content.append(r'}')
 
@@ -556,16 +558,6 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     # make the box paragraph 10.95pt too wide.
     lines.append(r'\vbox{\box0}\endgroup')
     lines.append('')
-
-    # The separator is only emitted when there is still room for it on the
-    # page. Otherwise it would be pushed alone onto the next page and leave a
-    # nearly empty page behind. It is also omitted after the last entry of a
-    # chapter, where the chapter's \newpage follows anyway.
-    if not last_in_chapter:
-        lines.append(r'\ifdim\dimexpr\pagegoal-\pagetotal\relax>40pt\relax')
-        lines.append(r'  \artifactsep')
-        lines.append(r'\fi')
-        lines.append('')
     return '\n'.join(lines)
 
 
@@ -667,8 +659,6 @@ def generate_latex(data_path, output_path, bilder_dir):
     chapters = [a.get('gattung') or 'Ohne Materialgattung' for a in artifacts]
     for index, art in enumerate(artifacts):
         chapter = chapters[index]
-        last_in_chapter = (index + 1 == len(artifacts)
-                           or chapters[index + 1] != chapter)
         if chapter != current_chapter:
             current_chapter = chapter
             first_in_chapter = True
@@ -681,8 +671,7 @@ def generate_latex(data_path, output_path, bilder_dir):
 
         label = art['katalog_id'].replace('.', '-').replace(' ', '-')
         doc.append(generate_artifact_entry(art, bilder_dir, chapter,
-                                          first_in_chapter, last_in_chapter,
-                                          label))
+                                          first_in_chapter, label))
         first_in_chapter = False
         doc.append('')
 

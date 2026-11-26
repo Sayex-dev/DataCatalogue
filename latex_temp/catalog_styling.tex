@@ -67,7 +67,8 @@
 \definecolor{quotebg}{HTML}{FAF8F4}  
 \definecolor{quoteborder}{HTML}{E0DCD3}  
 \definecolor{sectionline}{HTML}{444444}  
-\definecolor{zebra}{HTML}{FAFAFA}  
+\definecolor{zebra}{HTML}{EEE9E3}  % accent (ochre) tinted ~15% toward white
+\definecolor{tablehead}{HTML}{9C9C9C}  % column headers, muted below the table title
   
 % ── Tables ──────────────────────────────────────────────────  
 \usepackage{tabularx}  
@@ -75,6 +76,10 @@
 \usepackage{longtable}  
 \usepackage{array}  
 \usepackage{colortbl}  
+
+% Column headers of the location table. Kept lighter than the table title so
+% the title stays the dominant line.
+\newcommand{\tablehead}[1]{\textbf{\textcolor{tablehead}{#1}}}  
   
 % ── Quote Boxes ─────────────────────────────────────────────  
 \usepackage{tcolorbox}  
@@ -173,23 +178,17 @@
   \vspace{10pt}%                                    % INCREASED from 8pt
 }  
   
+% One metadata field. \hangindent/\hangafter indent only the continuation
+% lines, so a value that wraps stays visually attached to its label.
+\newcommand{\metaitem}[2]{%  
+  \par  
+  {\hangindent=1.2em \hangafter=1 \noindent\textbf{#1:} #2\par}%  
+}  
+  
 % Catalog number marker (small, above title, number only)
 \newcommand{\catnum}[1]{%
   {\fontsize{9pt}{12pt}\selectfont\color{metagray}#1\par}%
   \vspace{2pt}%
-}  
-  
-% Separator line  
-% parfillskip is non-zero because of KOMA's parskip=half; without resetting it
-% the full-width rule overflows the column by ~12pt.
-% No \FloatBarrier here: the separator is typeset inside the measured entry
-% box, where a float barrier is neither needed nor legal.
-% A short, light rule separates entries without competing with the chapter rule.
-\newcommand{\artifactsep}{%  
-  \vspace{16pt}%
-  {\parfillskip=0pt\relax
-   \noindent{\color{quoteborder}\rule{0.45\textwidth}{0.2pt}}\par}%
-  \vspace{16pt}%
 }  
   
 % Reference text (gray, 10pt) — tight list, no extra paragraph spacing
