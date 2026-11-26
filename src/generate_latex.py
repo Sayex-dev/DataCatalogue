@@ -422,45 +422,68 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
     body.append(f'\\artifacttitle{{{kn}}}{{{artifact_name}}}')
     body.append(r'\vspace{6pt}')
 
-    # Left column: metadata + descriptions
-    left_content = [r'{\parskip=0pt\relax']
+    # Metadata block
+    meta_content = [r'{\parskip=0pt\relax']
     fields = format_entry_fields(artifact)
     if fields:
-        left_content.append(r'\metablock{')
-        left_content.append(r' \\ '.join(fields))
-        left_content.append('}')
+        meta_content.append(r'\metablock{')
+        meta_content.append(r' \\ '.join(fields))
+        meta_content.append('}')
+    meta_content.append(r'}')
 
     # Description box: catalogue text from Fischer, or the external
     # description with its source marker turned into the label.
+    desc_content = []
     box_text, box_label = description_box(artifact)
     if box_text:
-        left_content.append('')
-        left_content.append(r'\begin{quotebox}')
-        left_content.append(
+        desc_content.append(r'\begin{quotebox}')
+        desc_content.append(
             r'{\fontsize{9pt}{11.5pt}\selectfont\bfseries\color{accent}'
             + escape_meta(box_label) + r':\par}'
         )
-        left_content.append(r'\vspace{4pt}')
-        left_content.append(latex_escape(format_body_text(box_text)))
-        left_content.append(r'\end{quotebox}')
-        left_content.append('')
+        desc_content.append(r'\vspace{4pt}')
+        desc_content.append(latex_escape(format_body_text(box_text)))
+        desc_content.append(r'\end{quotebox}')
+        desc_content.append('')
 
     if artifact.get('beschreibung_mie'):
-        left_content.append(
+        desc_content.append(
             latex_escape(format_body_text(artifact['beschreibung_mie']))
         )
-        left_content.append('')
-
-    # Close the compact-spacing group opened at the top of the column.
-    left_content.append(r'}')
+        desc_content.append('')
 
     image_block = format_image_block(artifact, bilder_dir)
-    if image_block:
+    image_count = len(artifact.get('images', []))
+
+    # A long description next to a single figure would be squeezed into the
+    # narrow text column, so it moves below the two-column block and uses the
+    # full width instead.
+    wide_description = bool(box_text) and len(box_text) > 200 and image_count == 1
+
+    if image_block and wide_description:
+        body.extend([
+            r'\noindent',
+            r'\begin{minipage}[t]{0.55\textwidth}',
+            '\n'.join(meta_content),
+            r'\end{minipage}',
+            r'\hfill',
+            r'\begin{minipage}[t]{0.42\textwidth}',
+            r'\vspace{0pt}',
+            image_block,
+            r'\end{minipage}',
+            '',
+            r'\vspace{6pt}',
+            r'\noindent',
+            r'\begin{minipage}[t]{0.78\textwidth}',
+            '\n'.join(desc_content),
+            r'\end{minipage}',
+        ])
+    elif image_block:
         # Two columns: text left, figure right.
         body.extend([
             r'\noindent',
             r'\begin{minipage}[t]{0.55\textwidth}',
-            '\n'.join(left_content),
+            '\n'.join(meta_content + desc_content),
             r'\end{minipage}',
             r'\hfill',
             r'\begin{minipage}[t]{0.42\textwidth}',
@@ -474,7 +497,7 @@ def generate_artifact_entry(artifact, bilder_dir, chapter='',
         body.extend([
             r'\noindent',
             r'\begin{minipage}[t]{0.78\textwidth}',
-            '\n'.join(left_content),
+            '\n'.join(meta_content + desc_content),
             r'\end{minipage}',
         ])
 
@@ -603,7 +626,7 @@ def generate_latex(data_path, output_path, bilder_dir):
     # One \rhead per Gattung group: the first artifact of each group sets it.
     doc = [r'\input{catalog_styling.tex}', '', r'\begin{document}', '']
 
-    # Title page: title block in the middle, year at the bottom.
+    # Title page: title block in the middle.
     doc.append(r'\thispagestyle{empty}')
     doc.append(r'\begin{center}')
     doc.append(r'\vspace*{\fill}')
@@ -616,8 +639,6 @@ def generate_latex(data_path, output_path, bilder_dir):
     doc.append(r'\vspace{14pt}')
     doc.append(r'{\color{accent}\rule{0.18\textwidth}{1.2pt}\par}')
     doc.append(r'\vspace*{\fill}')
-    doc.append(r'{\fontsize{11pt}{14pt}\selectfont\color{refgray}1936\par}')
-    doc.append(r'\vspace*{1.2cm}')
     doc.append(r'\end{center}')
     doc.append(r'\newpage')
     doc.append('')
